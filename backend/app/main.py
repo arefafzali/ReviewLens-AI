@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.api_metadata import APP_DESCRIPTION, APP_TITLE, APP_VERSION, OPENAPI_TAGS
 from app.config import get_settings
 from app.models.api_error import APIErrorResponse, ErrorDetail
 from app.routers import api_router
@@ -31,11 +32,13 @@ def create_app() -> FastAPI:
     settings = get_settings()
 
     app = FastAPI(
-        title="ReviewLens AI Backend",
-        version="0.1.0",
+        title=APP_TITLE,
+        version=APP_VERSION,
+        description=APP_DESCRIPTION,
         docs_url="/docs",
         redoc_url="/redoc",
         openapi_url="/openapi.json",
+        openapi_tags=OPENAPI_TAGS,
     )
 
     app.state.settings = settings

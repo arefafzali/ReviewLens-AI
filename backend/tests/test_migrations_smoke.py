@@ -24,3 +24,8 @@ def test_alembic_upgrade_head_sql_smoke(monkeypatch, capsys) -> None:
     assert "create table chat_messages" in output
     assert "create index ix_reviews_search_vector" in output
     assert "uq_reviews_source_review_id_not_null" in output
+    assert "add column outcome_code" in output
+    assert "add column records_ingested" in output
+    assert "add column result_metadata" in output
+    assert "create index ix_ingestion_runs_status" in output
+    assert "create index ix_ingestion_runs_outcome_code" in output

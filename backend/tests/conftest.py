@@ -11,6 +11,7 @@ def set_test_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     """Provide mandatory environment values for tests."""
 
     monkeypatch.setenv("REVIEWLENS_ENVIRONMENT", "test")
+    monkeypatch.setenv("DATABASE_URL", "sqlite+pysqlite:///:memory:")
 
 
 @pytest.fixture

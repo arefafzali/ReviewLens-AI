@@ -38,6 +38,24 @@ docker compose up --build backend db
 - `GET /health/live`
 - `GET /health/ready`
 
+## API documentation
+
+- `GET /docs` (Swagger UI)
+- `GET /redoc` (ReDoc)
+- `GET /openapi.json` (OpenAPI schema)
+
+## Ingestion orchestration APIs
+
+- `POST /ingestion/url`
+- `POST /ingestion/csv`
+
+Both endpoints create an `ingestion_runs` record for each attempt and return a
+typed ingestion result contract containing:
+
+- `status`: `success` | `partial` | `failed`
+- `outcome_code`: `ok` | `low_data` | `blocked` | `parse_failed` | `invalid_url` | `empty_csv` | `malformed_csv`
+- captured review count and timestamps
+
 ## Test
 
 ```bash

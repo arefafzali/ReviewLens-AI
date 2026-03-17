@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     api_host: str = Field("0.0.0.0", description="HTTP bind host.")
     api_port: int = Field(8000, ge=1, le=65535, description="HTTP bind port.")
     api_prefix: str = Field("", description="Global API path prefix.")
+    database_url: str = Field(
+        ...,
+        validation_alias=AliasChoices("REVIEWLENS_DATABASE_URL", "DATABASE_URL"),
+        description="Database connection URL.",
+    )
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
     @field_validator("environment")
