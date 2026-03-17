@@ -1,5 +1,6 @@
 [build-system]
-requires = ["setuptools>=69", "wheel"]
+# Updated setuptools for better Python 3.13/3.14 support
+requires = ["setuptools>=75.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,10 +8,14 @@ name = "reviewlens-backend"
 version = "0.1.0"
 description = "ReviewLens AI backend service"
 readme = "README.md"
+# 3.11 is the floor, but 3.13 is the target
 requires-python = ">=3.11"
 dependencies = [
+  "alembic>=1.14.0,<2.0.0",
   "fastapi>=0.115.0,<1.0.0",
   "pydantic-settings>=2.6.0,<3.0.0",
+  "psycopg[binary]>=3.2.3,<4.0.0",
+  "sqlalchemy>=2.0.36,<3.0.0",
   "uvicorn[standard]>=0.32.0,<1.0.0",
 ]
 

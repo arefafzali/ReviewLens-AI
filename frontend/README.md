@@ -11,8 +11,20 @@ npm run dev
 
 Open http://localhost:3000.
 
+Run with Docker from monorepo root:
+
+```bash
+docker compose up --build frontend backend db
+```
+
 ## Test
 
 ```bash
 npm test
+```
+
+Run tests from Docker container:
+
+```bash
+docker compose exec frontend npm test
 ```
