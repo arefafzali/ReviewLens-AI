@@ -28,6 +28,56 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("REVIEWLENS_DATABASE_URL", "DATABASE_URL"),
         description="Database connection URL.",
     )
+    firecrawl_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("REVIEWLENS_FIRECRAWL_API_KEY", "FIRECRAWL_API_KEY"),
+        description="Firecrawl API key for public URL fetching.",
+    )
+    firecrawl_timeout_seconds: float = Field(
+        default=45.0,
+        validation_alias=AliasChoices("REVIEWLENS_FIRECRAWL_TIMEOUT_SECONDS"),
+        ge=1.0,
+        le=120.0,
+        description="Timeout for Firecrawl API requests.",
+    )
+    openai_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("REVIEWLENS_OPENAI_API_KEY", "OPENAI_API_KEY"),
+        description="OpenAI API key for markdown chunk review extraction.",
+    )
+    openai_model: str = Field(
+        default="gpt-4o-mini",
+        validation_alias=AliasChoices("REVIEWLENS_OPENAI_MODEL"),
+        description="OpenAI model used for markdown chunk review extraction.",
+    )
+    openai_timeout_seconds: float = Field(
+        default=45.0,
+        validation_alias=AliasChoices("REVIEWLENS_OPENAI_TIMEOUT_SECONDS"),
+        ge=1.0,
+        le=120.0,
+        description="Timeout for OpenAI extraction calls.",
+    )
+    markdown_chunk_size_chars: int = Field(
+        default=6000,
+        validation_alias=AliasChoices("REVIEWLENS_MARKDOWN_CHUNK_SIZE_CHARS"),
+        ge=500,
+        le=30000,
+        description="Chunk size for markdown slicing before GPT extraction.",
+    )
+    markdown_chunk_overlap_chars: int = Field(
+        default=800,
+        validation_alias=AliasChoices("REVIEWLENS_MARKDOWN_CHUNK_OVERLAP_CHARS"),
+        ge=0,
+        le=5000,
+        description="Overlap between markdown chunks.",
+    )
+    markdown_max_chunks: int = Field(
+        default=30,
+        validation_alias=AliasChoices("REVIEWLENS_MARKDOWN_MAX_CHUNKS"),
+        ge=1,
+        le=100,
+        description="Maximum markdown chunks to send to GPT per URL.",
+    )
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
     @field_validator("environment")

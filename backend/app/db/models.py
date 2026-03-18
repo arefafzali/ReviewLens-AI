@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import date
 from datetime import datetime, timezone
 import uuid
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text
+from decimal import Decimal
+
+from sqlalchemy import JSON, Date, DateTime, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -55,5 +58,28 @@ class IngestionRun(Base):
     result_metadata: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class Review(Base):
+    __tablename__ = "reviews"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+    ingestion_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("ingestion_runs.id", ondelete="SET NULL"), nullable=True
+    )
+    source_platform: Mapped[str] = mapped_column(String(50), default="unknown", nullable=False)
+    source_review_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    review_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    rating: Mapped[Decimal | None] = mapped_column(Numeric(3, 2), nullable=True)
+    reviewed_at: Mapped[date | None] = mapped_column(Date, nullable=True)
+    author_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    language_code: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    review_metadata: Mapped[dict] = mapped_column("metadata", JSON, default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)

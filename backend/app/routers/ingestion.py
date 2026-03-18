@@ -17,7 +17,10 @@ router = APIRouter(prefix="/ingestion")
     "/url",
     response_model=IngestionAttemptResponse,
     summary="Run URL ingestion orchestration",
-    description="Creates and finalizes an ingestion run for a Capterra URL ingestion attempt.",
+    description=(
+        "Creates and finalizes an ingestion run for a public review URL. "
+        "Fetching is provider-backed and parsing uses a host-agnostic generic extractor."
+    ),
 )
 def ingest_from_url(
     payload: URLIngestionRequest,

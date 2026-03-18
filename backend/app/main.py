@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
@@ -23,7 +24,10 @@ def _error_response(
     payload = APIErrorResponse(
         error=ErrorDetail(code=code, message=message, details=dict(details) if details else None)
     )
-    return JSONResponse(status_code=status_code, content=payload.model_dump(exclude_none=True))
+    return JSONResponse(
+        status_code=status_code,
+        content=jsonable_encoder(payload.model_dump(exclude_none=True)),
+    )
 
 
 def create_app() -> FastAPI:

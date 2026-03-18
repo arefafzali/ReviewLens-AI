@@ -5,10 +5,11 @@ from __future__ import annotations
 import csv
 from dataclasses import dataclass
 from io import StringIO
-from urllib.parse import urlparse
+from typing import Any
 
 from sqlalchemy.exc import IntegrityError
 
+from app.config import get_settings
 from app.repositories.ingestion_runs import IngestionRunRepository
 from app.schemas.ingestion import (
     CSVIngestionRequest,
@@ -18,6 +19,7 @@ from app.schemas.ingestion import (
     IngestionSourceType,
     URLIngestionRequest,
 )
+from app.services.ingestion.url_pipeline import URLIngestionPipeline
 
 
 @dataclass(frozen=True)
@@ -28,6 +30,8 @@ class EvaluationResult:
     message: str
     warnings: list[str]
     error_detail: str | None = None
+    diagnostics: dict[str, Any] | None = None
+    extracted_reviews: list[dict[str, Any]] | None = None
 
 
 class IngestionOrchestrationService:
@@ -48,7 +52,77 @@ class IngestionOrchestrationService:
         except IntegrityError as exc:
             raise ValueError("workspace_id and product_id must reference existing records") from exc
 
+        if not payload.reload:
+            cached = self._repository.find_cached_url_ingestion(
+                workspace_id=payload.workspace_id,
+                product_id=payload.product_id,
+                target_url=str(payload.target_url),
+            )
+            if cached is not None:
+                source_diagnostics = dict(cached.get("source_diagnostics", {}))
+                diagnostics = {
+                    "cache_hit": True,
+                    "cache_source_ingestion_run_id": str(cached["source_ingestion_run_id"]),
+                    "cached_reviews": int(cached["cached_reviews"]),
+                    "requested_url": str(payload.target_url),
+                    "source_host": source_diagnostics.get("source_host"),
+                    "provider": source_diagnostics.get("provider"),
+                    "parser": source_diagnostics.get("parser"),
+                    "reload": False,
+                }
+                run = self._repository.finalize_attempt(
+                    run=run,
+                    status=IngestionRunStatus.SUCCESS,
+                    outcome_code=IngestionOutcomeCode.OK,
+                    captured_reviews=int(cached["cached_reviews"]),
+                    message="Ingestion served from cached stored reviews.",
+                    warnings=[],
+                    error_detail=None,
+                    diagnostics=diagnostics,
+                )
+                return self._to_response(run)
+
         evaluation = self._evaluate_url(str(payload.target_url))
+        persisted_reviews = 0
+        if evaluation.extracted_reviews:
+            persisted_reviews = self._repository.persist_extracted_reviews(
+                workspace_id=payload.workspace_id,
+                product_id=payload.product_id,
+                ingestion_run_id=run.id,
+                source_host=(evaluation.diagnostics or {}).get("source_host"),
+                reviews=evaluation.extracted_reviews,
+            )
+            captured_reviews = persisted_reviews if persisted_reviews > 0 else evaluation.captured_reviews
+            diagnostics = dict(evaluation.diagnostics or {})
+            diagnostics["cache_hit"] = False
+            diagnostics["reload"] = payload.reload
+            diagnostics["persisted_reviews"] = persisted_reviews
+            diagnostics["extracted_reviews"] = evaluation.captured_reviews
+            evaluation = EvaluationResult(
+                status=evaluation.status,
+                outcome_code=evaluation.outcome_code,
+                captured_reviews=captured_reviews,
+                message=evaluation.message,
+                warnings=evaluation.warnings,
+                error_detail=evaluation.error_detail,
+                diagnostics=diagnostics,
+                extracted_reviews=evaluation.extracted_reviews,
+            )
+        elif evaluation.diagnostics is not None:
+            diagnostics = dict(evaluation.diagnostics)
+            diagnostics["cache_hit"] = False
+            diagnostics["reload"] = payload.reload
+            evaluation = EvaluationResult(
+                status=evaluation.status,
+                outcome_code=evaluation.outcome_code,
+                captured_reviews=evaluation.captured_reviews,
+                message=evaluation.message,
+                warnings=evaluation.warnings,
+                error_detail=evaluation.error_detail,
+                diagnostics=diagnostics,
+                extracted_reviews=evaluation.extracted_reviews,
+            )
+
         run = self._repository.finalize_attempt(
             run=run,
             status=evaluation.status,
@@ -57,6 +131,7 @@ class IngestionOrchestrationService:
             message=evaluation.message,
             warnings=evaluation.warnings,
             error_detail=evaluation.error_detail,
+            diagnostics=evaluation.diagnostics,
         )
         return self._to_response(run)
 
@@ -85,55 +160,27 @@ class IngestionOrchestrationService:
         return self._to_response(run)
 
     def _evaluate_url(self, target_url: str) -> EvaluationResult:
-        parsed = urlparse(target_url)
-        host = (parsed.netloc or "").lower()
-
-        if "capterra.com" not in host:
-            return EvaluationResult(
-                status=IngestionRunStatus.FAILED,
-                outcome_code=IngestionOutcomeCode.INVALID_URL,
-                captured_reviews=0,
-                message="Only Capterra URLs are currently supported.",
-                warnings=[],
-                error_detail="Target URL host must be capterra.com.",
-            )
-
-        normalized = target_url.lower()
-        if "blocked" in normalized:
-            return EvaluationResult(
-                status=IngestionRunStatus.FAILED,
-                outcome_code=IngestionOutcomeCode.BLOCKED,
-                captured_reviews=0,
-                message="Ingestion request was blocked by source constraints.",
-                warnings=[],
-                error_detail="Placeholder block signal in URL.",
-            )
-
-        if "parse-failed" in normalized or "parse_failed" in normalized:
-            return EvaluationResult(
-                status=IngestionRunStatus.FAILED,
-                outcome_code=IngestionOutcomeCode.PARSE_FAILED,
-                captured_reviews=0,
-                message="Source content could not be parsed.",
-                warnings=[],
-                error_detail="Placeholder parse failure signal in URL.",
-            )
-
-        if "low-data" in normalized or "low_data" in normalized:
-            return EvaluationResult(
-                status=IngestionRunStatus.PARTIAL,
-                outcome_code=IngestionOutcomeCode.LOW_DATA,
-                captured_reviews=1,
-                message="Ingestion completed with limited captured reviews.",
-                warnings=["Low data volume detected from source page."],
-            )
-
+        settings = get_settings()
+        pipeline = URLIngestionPipeline.with_firecrawl(
+            firecrawl_api_key=settings.firecrawl_api_key,
+            openai_api_key=settings.openai_api_key,
+            openai_model=settings.openai_model,
+            firecrawl_timeout_seconds=settings.firecrawl_timeout_seconds,
+            openai_timeout_seconds=settings.openai_timeout_seconds,
+            chunk_size_chars=settings.markdown_chunk_size_chars,
+            chunk_overlap_chars=settings.markdown_chunk_overlap_chars,
+            max_chunks=settings.markdown_max_chunks,
+        )
+        result = pipeline.run(target_url)
         return EvaluationResult(
-            status=IngestionRunStatus.SUCCESS,
-            outcome_code=IngestionOutcomeCode.OK,
-            captured_reviews=5,
-            message="Ingestion completed successfully.",
-            warnings=[],
+            status=result.status,
+            outcome_code=result.outcome_code,
+            captured_reviews=result.captured_reviews,
+            message=result.message,
+            warnings=result.warnings,
+            error_detail=result.error_detail,
+            diagnostics=result.diagnostics,
+            extracted_reviews=result.extracted_reviews,
         )
 
     def _evaluate_csv(self, csv_content: str) -> EvaluationResult:
@@ -220,6 +267,7 @@ class IngestionOrchestrationService:
             captured_reviews=run.records_ingested,
             message=str(metadata.get("message", "")),
             warnings=[str(item) for item in metadata.get("warnings", [])],
+            diagnostics=dict(metadata.get("diagnostics", {})),
             started_at=run.started_at,
             completed_at=run.completed_at,
         )
