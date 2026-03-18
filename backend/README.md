@@ -56,12 +56,33 @@ docker compose up --build backend db
 - `reload: false` (default): use cached stored reviews for the same workspace/product/url when available
 - `reload: true`: bypass cache and force fresh extraction from source
 
+`POST /ingestion/csv` supports flexible column aliases. Required field:
+
+- body aliases: `body`, `review`, `review_text`, `reviewText`, `text`, `content`, `comment`, `comments`, `feedback`
+
+Optional aliases:
+
+- rating aliases: `rating`, `stars`, `score`, `overallRating`, `overallScore`
+- author aliases: `author`, `reviewer`, `name`, `username`, `user`, `customer`
+- title aliases: `title`, `headline`, `summary`, `subject`
+- date aliases: `date`, `reviewDate`, `reviewedAt`, `publishedAt`, `createdAt`
+
+CSV rows are normalized to the same downstream review shape as URL ingestion:
+
+- `title`, `body`, `rating`, `author`, `date`, `url`
+
 Both endpoints create an `ingestion_runs` record for each attempt and return a
 typed ingestion result contract containing:
 
 - `status`: `success` | `partial` | `failed`
 - `outcome_code`: `ok` | `low_data` | `blocked` | `parse_failed` | `invalid_url` | `empty_csv` | `malformed_csv`
 - captured review count and timestamps
+
+For successful URL/CSV ingestions, diagnostics include normalization and dedupe counters:
+
+- `persisted_reviews`: newly inserted rows
+- `duplicates_removed`: rows removed by deterministic deduplication
+- `skipped_missing_body`: rows dropped because required review text was missing
 
 URL ingestion architecture:
 

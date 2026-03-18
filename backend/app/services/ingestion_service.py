@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import csv
 from dataclasses import dataclass
-from io import StringIO
 from typing import Any
 
 from sqlalchemy.exc import IntegrityError
@@ -19,6 +17,7 @@ from app.schemas.ingestion import (
     IngestionSourceType,
     URLIngestionRequest,
 )
+from app.services.ingestion.csv_parser import CSVParseError, CSVParseErrorCode, parse_csv_reviews
 from app.services.ingestion.url_pipeline import URLIngestionPipeline
 
 
@@ -83,21 +82,27 @@ class IngestionOrchestrationService:
                 return self._to_response(run)
 
         evaluation = self._evaluate_url(str(payload.target_url))
-        persisted_reviews = 0
+        persistence_stats = None
         if evaluation.extracted_reviews:
-            persisted_reviews = self._repository.persist_extracted_reviews(
+            persistence_stats = self._repository.persist_extracted_reviews(
                 workspace_id=payload.workspace_id,
                 product_id=payload.product_id,
                 ingestion_run_id=run.id,
                 source_host=(evaluation.diagnostics or {}).get("source_host"),
                 reviews=evaluation.extracted_reviews,
             )
-            captured_reviews = persisted_reviews if persisted_reviews > 0 else evaluation.captured_reviews
+            captured_reviews = (
+                persistence_stats.inserted_reviews
+                if persistence_stats.inserted_reviews > 0
+                else evaluation.captured_reviews
+            )
             diagnostics = dict(evaluation.diagnostics or {})
             diagnostics["cache_hit"] = False
             diagnostics["reload"] = payload.reload
-            diagnostics["persisted_reviews"] = persisted_reviews
+            diagnostics["persisted_reviews"] = persistence_stats.inserted_reviews
             diagnostics["extracted_reviews"] = evaluation.captured_reviews
+            diagnostics["duplicates_removed"] = persistence_stats.duplicates_removed
+            diagnostics["skipped_missing_body"] = persistence_stats.skipped_missing_body
             evaluation = EvaluationResult(
                 status=evaluation.status,
                 outcome_code=evaluation.outcome_code,
@@ -148,6 +153,35 @@ class IngestionOrchestrationService:
             raise ValueError("workspace_id and product_id must reference existing records") from exc
 
         evaluation = self._evaluate_csv(payload.csv_content)
+        if evaluation.extracted_reviews:
+            persistence_stats = self._repository.persist_extracted_reviews(
+                workspace_id=payload.workspace_id,
+                product_id=payload.product_id,
+                ingestion_run_id=run.id,
+                source_host="csv_upload",
+                reviews=evaluation.extracted_reviews,
+            )
+            captured_reviews = (
+                persistence_stats.inserted_reviews
+                if persistence_stats.inserted_reviews > 0
+                else evaluation.captured_reviews
+            )
+            diagnostics = dict(evaluation.diagnostics or {})
+            diagnostics["persisted_reviews"] = persistence_stats.inserted_reviews
+            diagnostics["parsed_reviews"] = evaluation.captured_reviews
+            diagnostics["duplicates_removed"] = persistence_stats.duplicates_removed
+            diagnostics["skipped_missing_body"] = persistence_stats.skipped_missing_body
+            evaluation = EvaluationResult(
+                status=evaluation.status,
+                outcome_code=evaluation.outcome_code,
+                captured_reviews=captured_reviews,
+                message=evaluation.message,
+                warnings=evaluation.warnings,
+                error_detail=evaluation.error_detail,
+                diagnostics=diagnostics,
+                extracted_reviews=evaluation.extracted_reviews,
+            )
+
         run = self._repository.finalize_attempt(
             run=run,
             status=evaluation.status,
@@ -156,6 +190,7 @@ class IngestionOrchestrationService:
             message=evaluation.message,
             warnings=evaluation.warnings,
             error_detail=evaluation.error_detail,
+            diagnostics=evaluation.diagnostics,
         )
         return self._to_response(run)
 
@@ -184,53 +219,24 @@ class IngestionOrchestrationService:
         )
 
     def _evaluate_csv(self, csv_content: str) -> EvaluationResult:
-        if not csv_content.strip():
-            return EvaluationResult(
-                status=IngestionRunStatus.FAILED,
-                outcome_code=IngestionOutcomeCode.EMPTY_CSV,
-                captured_reviews=0,
-                message="CSV file contains no data.",
-                warnings=[],
-                error_detail="Empty CSV payload.",
-            )
-
         try:
-            rows = list(csv.reader(StringIO(csv_content)))
-        except csv.Error as exc:
+            parsed = parse_csv_reviews(csv_content)
+        except CSVParseError as exc:
+            outcome = (
+                IngestionOutcomeCode.EMPTY_CSV
+                if exc.code == CSVParseErrorCode.EMPTY_INPUT
+                else IngestionOutcomeCode.MALFORMED_CSV
+            )
             return EvaluationResult(
                 status=IngestionRunStatus.FAILED,
-                outcome_code=IngestionOutcomeCode.MALFORMED_CSV,
+                outcome_code=outcome,
                 captured_reviews=0,
-                message="CSV could not be parsed.",
+                message="CSV could not be parsed." if outcome == IngestionOutcomeCode.MALFORMED_CSV else "CSV file contains no data.",
                 warnings=[],
-                error_detail=str(exc),
+                error_detail=exc.detail,
             )
 
-        if not rows or not rows[0]:
-            return EvaluationResult(
-                status=IngestionRunStatus.FAILED,
-                outcome_code=IngestionOutcomeCode.MALFORMED_CSV,
-                captured_reviews=0,
-                message="CSV header row is missing.",
-                warnings=[],
-                error_detail="Missing header row.",
-            )
-
-        header_width = len(rows[0])
-        data_rows = rows[1:]
-
-        for row in data_rows:
-            if len(row) != header_width:
-                return EvaluationResult(
-                    status=IngestionRunStatus.FAILED,
-                    outcome_code=IngestionOutcomeCode.MALFORMED_CSV,
-                    captured_reviews=0,
-                    message="CSV rows are inconsistent with header shape.",
-                    warnings=[],
-                    error_detail="Inconsistent row width.",
-                )
-
-        captured = len(data_rows)
+        captured = len(parsed.reviews)
         if captured == 0:
             return EvaluationResult(
                 status=IngestionRunStatus.PARTIAL,
@@ -238,6 +244,11 @@ class IngestionOrchestrationService:
                 captured_reviews=0,
                 message="CSV parsed but contained no review records.",
                 warnings=["No data rows were found after the header."],
+                diagnostics={
+                    "parser": "csv_alias_mapping",
+                    "column_mapping": parsed.column_mapping,
+                },
+                extracted_reviews=[],
             )
 
         if captured == 1:
@@ -247,6 +258,11 @@ class IngestionOrchestrationService:
                 captured_reviews=1,
                 message="CSV parsed with a low number of review records.",
                 warnings=["Only one review record was detected."],
+                diagnostics={
+                    "parser": "csv_alias_mapping",
+                    "column_mapping": parsed.column_mapping,
+                },
+                extracted_reviews=parsed.reviews,
             )
 
         return EvaluationResult(
@@ -255,6 +271,11 @@ class IngestionOrchestrationService:
             captured_reviews=captured,
             message="CSV ingestion completed successfully.",
             warnings=[],
+            diagnostics={
+                "parser": "csv_alias_mapping",
+                "column_mapping": parsed.column_mapping,
+            },
+            extracted_reviews=parsed.reviews,
         )
 
     def _to_response(self, run) -> IngestionAttemptResponse:

@@ -158,6 +158,58 @@ def test_csv_ingestion_failure_empty_csv_is_persisted() -> None:
     assert result.completed_at is not None
 
 
+def test_csv_ingestion_parses_aliases_and_persists_reviews() -> None:
+    db = _setup_db()
+    workspace_id, product_id = _seed_workspace_and_product(db)
+    service = IngestionOrchestrationService(IngestionRunRepository(db))
+
+    csv_content = """Review Text,Stars,Reviewer Name,Headline,Reviewed At
+Excellent support and workflow improvements,4.5,Sam R,Great product,2026-03-01
+Solid feature set for teams,4,Ana T,Useful,2026-03-02
+"""
+
+    result = service.attempt_csv_ingestion(
+        CSVIngestionRequest(
+            workspace_id=workspace_id,
+            product_id=product_id,
+            csv_filename="reviews.csv",
+            csv_content=csv_content,
+        )
+    )
+
+    stored_reviews = db.query(Review).all()
+    assert result.status.value == "success"
+    assert result.outcome_code.value == "ok"
+    assert result.captured_reviews == 2
+    assert result.diagnostics["parser"] == "csv_alias_mapping"
+    assert result.diagnostics["persisted_reviews"] == 2
+    assert result.diagnostics["duplicates_removed"] == 0
+    assert len(stored_reviews) == 2
+
+
+def test_csv_ingestion_malformed_rows_are_explicit_failure() -> None:
+    db = _setup_db()
+    workspace_id, product_id = _seed_workspace_and_product(db)
+    service = IngestionOrchestrationService(IngestionRunRepository(db))
+
+    malformed_csv = """body,rating,author
+Works well,5,Sam,unexpected
+"""
+
+    result = service.attempt_csv_ingestion(
+        CSVIngestionRequest(
+            workspace_id=workspace_id,
+            product_id=product_id,
+            csv_filename="broken.csv",
+            csv_content=malformed_csv,
+        )
+    )
+
+    assert result.status.value == "failed"
+    assert result.outcome_code.value == "malformed_csv"
+    assert result.captured_reviews == 0
+
+
 def test_url_ingestion_persists_extracted_reviews_rows(monkeypatch) -> None:
     db = _setup_db()
     workspace_id, product_id = _seed_workspace_and_product(db)
@@ -217,6 +269,7 @@ def test_url_ingestion_persists_extracted_reviews_rows(monkeypatch) -> None:
     assert result.captured_reviews == 2
     assert result.diagnostics["persisted_reviews"] == 2
     assert result.diagnostics["extracted_reviews"] == 2
+    assert result.diagnostics["duplicates_removed"] == 1
 
 
 def test_url_ingestion_uses_cache_when_reviews_already_stored(monkeypatch) -> None:
@@ -248,7 +301,7 @@ def test_url_ingestion_uses_cache_when_reviews_already_stored(monkeypatch) -> No
             }
         ],
     )
-    assert inserted == 1
+    assert inserted.inserted_reviews == 1
     repository.finalize_attempt(
         run=previous_run,
         status=IngestionRunStatus.SUCCESS,

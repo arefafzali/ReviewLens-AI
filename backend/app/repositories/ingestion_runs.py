@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import hashlib
-from datetime import date
 from datetime import datetime, timezone
-from decimal import Decimal
+from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 from urllib.parse import urlparse
@@ -16,6 +14,17 @@ from sqlalchemy.orm import Session
 
 from app.db.models import IngestionRun, Review
 from app.schemas.ingestion import IngestionOutcomeCode, IngestionRunStatus, IngestionSourceType
+from app.services.ingestion.review_normalization import normalize_reviews_for_persistence
+
+
+@dataclass(frozen=True)
+class PersistedReviewsResult:
+    """Persistence outcome counters for normalized review ingestion."""
+
+    input_reviews: int
+    inserted_reviews: int
+    duplicates_removed: int
+    skipped_missing_body: int
 
 
 class IngestionRunRepository:
@@ -97,47 +106,21 @@ class IngestionRunRepository:
         ingestion_run_id: UUID,
         source_host: str | None,
         reviews: list[dict[str, Any]],
-    ) -> int:
+    ) -> PersistedReviewsResult:
         platform = _platform_from_host(source_host)
 
-        normalized_rows: list[dict[str, Any]] = []
-        for raw in reviews:
-            body = _safe_text(raw.get("body"))
-            if not body:
-                continue
-
-            title = _safe_text(raw.get("title"))
-            author_name = _safe_text(raw.get("author"))
-            source_review_id = _safe_text(raw.get("url"))
-            rating = _safe_rating(raw.get("rating"))
-            reviewed_at = _safe_review_date(raw.get("date"))
-            fingerprint = _review_fingerprint(
-                platform=platform,
-                body=body,
-                author=author_name,
-                reviewed_at=reviewed_at,
-                rating=rating,
-            )
-
-            normalized_rows.append(
-                {
-                    "title": title,
-                    "body": body,
-                    "author_name": author_name,
-                    "source_review_id": source_review_id,
-                    "rating": rating,
-                    "reviewed_at": reviewed_at,
-                    "review_fingerprint": fingerprint,
-                    "metadata": {
-                        "raw": dict(raw),
-                    },
-                }
-            )
+        normalized = normalize_reviews_for_persistence(platform=platform, reviews=reviews)
+        normalized_rows = normalized.normalized_reviews
 
         if not normalized_rows:
-            return 0
+            return PersistedReviewsResult(
+                input_reviews=len(reviews),
+                inserted_reviews=0,
+                duplicates_removed=normalized.duplicates_in_payload,
+                skipped_missing_body=normalized.skipped_missing_body,
+            )
 
-        incoming_fingerprints = {item["review_fingerprint"] for item in normalized_rows}
+        incoming_fingerprints = {item.review_fingerprint for item in normalized_rows}
         existing_rows = (
             self._db.query(Review.review_fingerprint)
             .filter(
@@ -151,36 +134,49 @@ class IngestionRunRepository:
         existing_fingerprints = {row[0] for row in existing_rows}
 
         review_records: list[Review] = []
-        seen_in_batch: set[str] = set()
+        duplicates_existing = 0
         for row in normalized_rows:
-            fingerprint = row["review_fingerprint"]
-            if fingerprint in existing_fingerprints or fingerprint in seen_in_batch:
+            fingerprint = row.review_fingerprint
+            if fingerprint in existing_fingerprints:
+                duplicates_existing += 1
                 continue
-            seen_in_batch.add(fingerprint)
             review_records.append(
                 Review(
                     workspace_id=workspace_id,
                     product_id=product_id,
                     ingestion_run_id=ingestion_run_id,
                     source_platform=platform,
-                    source_review_id=row["source_review_id"],
+                    source_review_id=row.source_review_id,
                     review_fingerprint=fingerprint,
-                    title=row["title"],
-                    body=row["body"],
-                    rating=row["rating"],
-                    reviewed_at=row["reviewed_at"],
-                    author_name=row["author_name"],
+                    title=row.title,
+                    body=row.body,
+                    rating=row.rating,
+                    reviewed_at=row.reviewed_at,
+                    author_name=row.author_name,
                     language_code=None,
-                    review_metadata=row["metadata"],
+                    review_metadata={"raw": row.raw_payload},
                 )
             )
 
+        inserted_count = len(review_records)
+        duplicates_removed = normalized.duplicates_in_payload + duplicates_existing
+
         if not review_records:
-            return 0
+            return PersistedReviewsResult(
+                input_reviews=len(reviews),
+                inserted_reviews=0,
+                duplicates_removed=duplicates_removed,
+                skipped_missing_body=normalized.skipped_missing_body,
+            )
 
         self._db.add_all(review_records)
         self._db.flush()
-        return len(review_records)
+        return PersistedReviewsResult(
+            input_reviews=len(reviews),
+            inserted_reviews=inserted_count,
+            duplicates_removed=duplicates_removed,
+            skipped_missing_body=normalized.skipped_missing_body,
+        )
 
     def find_cached_url_ingestion(
         self,
@@ -237,54 +233,6 @@ class IngestionRunRepository:
         }
 
 
-def _safe_text(value: Any) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text or None
-
-
-def _safe_rating(value: Any) -> Decimal | None:
-    text = _safe_text(value)
-    if not text:
-        return None
-
-    try:
-        numeric = Decimal(text)
-    except (ArithmeticError, ValueError):
-        return None
-
-    if numeric < 0 or numeric > 5:
-        return None
-
-    return numeric.quantize(Decimal("0.01"))
-
-
-def _safe_review_date(value: Any) -> date | None:
-    text = _safe_text(value)
-    if not text:
-        return None
-
-    candidates = [text]
-    if " on " in text.lower():
-        candidates.append(text.split(" on ")[-1].strip())
-
-    for candidate in candidates:
-        iso_candidate = candidate.replace("Z", "+00:00")
-        try:
-            return datetime.fromisoformat(iso_candidate).date()
-        except ValueError:
-            pass
-
-        for pattern in ["%b %d, %Y", "%B %d, %Y", "%m/%d/%Y", "%Y-%m-%d"]:
-            try:
-                return datetime.strptime(candidate, pattern).date()
-            except ValueError:
-                continue
-
-    return None
-
-
 def _platform_from_host(source_host: str | None) -> str:
     host = _safe_text(source_host)
     if not host:
@@ -300,21 +248,8 @@ def _platform_from_host(source_host: str | None) -> str:
     return labels[0].lower()
 
 
-def _review_fingerprint(
-    *,
-    platform: str,
-    body: str,
-    author: str | None,
-    reviewed_at: date | None,
-    rating: Decimal | None,
-) -> str:
-    normalized = "|".join(
-        [
-            platform,
-            body.strip().lower(),
-            (author or "").strip().lower(),
-            reviewed_at.isoformat() if reviewed_at else "",
-            str(rating) if rating is not None else "",
-        ]
-    )
-    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+def _safe_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
