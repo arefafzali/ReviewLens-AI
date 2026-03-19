@@ -102,9 +102,14 @@ describe("IngestionPanel", () => {
     expect(await screen.findByText(/csv ingestion completed successfully/i)).toBeInTheDocument();
     expect(await screen.findByText("run-csv-123")).toBeInTheDocument();
     expect(onIngestionSuccess).toHaveBeenCalledTimes(1);
-    expect(onIngestionSuccess).toHaveBeenCalledWith(
+    expect(onIngestionSuccess).toHaveBeenNthCalledWith(
+      1,
       expect.objectContaining({
         source_type: "csv_upload",
+      }),
+      expect.objectContaining({
+        platform: "csv",
+        productId: expect.any(String),
       }),
     );
 

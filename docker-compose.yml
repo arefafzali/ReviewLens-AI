@@ -59,6 +59,8 @@ services:
       - /app/node_modules
     depends_on:
       - backend
+    command: >-
+      sh -c "rm -rf /app/.next && npm ci && npm run dev -- -H 0.0.0.0 -p 3000"
 
 volumes:
   pgdata:

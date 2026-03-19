@@ -43,6 +43,14 @@ Product selection behavior:
 - The workspace renders a product selector list and scopes summary/chat/history to the selected product only
 - URL sources map to stable product IDs via normalized URL keys
 - CSV sources map to stable product IDs via generated CSV source fingerprints
+- Successful ingestion optimistically prepends/updates the product card immediately without requiring a full dashboard reload
+- Product deletion is optimistic with automatic rollback and error feedback if the API call fails
+
+Dedicated product detail route:
+
+- `GET /product/[id]` renders a focused analysis shell for one product entity
+- Reuses existing analysis sections: ingestion summary, suggested questions, and scoped analyst chat
+- Invalid route IDs render a clean not-found state without breaking the app shell
 
 When URL ingestion is blocked or low-confidence, the ingestion panel provides inline CSV fallback guidance.
 

@@ -30,7 +30,16 @@ type CSVFormState = {
 const MAX_CSV_BYTES = 5 * 1024 * 1024;
 
 type IngestionPanelProps = {
-  onIngestionSuccess?: (result: IngestionAttemptResponse) => void;
+  onIngestionSuccess?: (
+    result: IngestionAttemptResponse,
+    context: {
+      workspaceId: string;
+      productId: string;
+      sourceUrl?: string;
+      productName?: string;
+      platform: string;
+    },
+  ) => void;
   onProductSelected?: (productId: string) => void;
 };
 
@@ -179,10 +188,19 @@ export function IngestionPanel({ onIngestionSuccess, onProductSelected }: Ingest
     setProgressText(null);
   }
 
-  function commitSuccessResult(result: IngestionAttemptResponse): void {
+  function commitSuccessResult(
+    result: IngestionAttemptResponse,
+    context: {
+      workspaceId: string;
+      productId: string;
+      sourceUrl?: string;
+      productName?: string;
+      platform: string;
+    },
+  ): void {
     setLastResult(result);
     setNotice({ tone: renderResultTone(result), message: result.message });
-    onIngestionSuccess?.(result);
+    onIngestionSuccess?.(result, context);
   }
 
   async function submitUrl(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -209,7 +227,13 @@ export function IngestionPanel({ onIngestionSuccess, onProductSelected }: Ingest
       });
 
       onProductSelected?.(context.productId);
-      commitSuccessResult(result);
+      commitSuccessResult(result, {
+        workspaceId: context.workspaceId,
+        productId: context.productId,
+        sourceUrl: context.sourceUrl,
+        productName: context.productName,
+        platform: "generic",
+      });
     } catch (error) {
       setNotice({ tone: "error", message: extractBackendErrorMessage(error) });
     } finally {
@@ -245,7 +269,13 @@ export function IngestionPanel({ onIngestionSuccess, onProductSelected }: Ingest
       });
 
       onProductSelected?.(context.productId);
-      commitSuccessResult(result);
+      commitSuccessResult(result, {
+        workspaceId: context.workspaceId,
+        productId: context.productId,
+        sourceUrl: context.sourceUrl,
+        productName: context.productName,
+        platform: "csv",
+      });
     } catch (error) {
       setNotice({ tone: "error", message: extractBackendErrorMessage(error) });
     } finally {

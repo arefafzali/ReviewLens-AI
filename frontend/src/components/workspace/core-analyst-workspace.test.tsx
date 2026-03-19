@@ -17,6 +17,7 @@ vi.mock("@/lib/api", async () => {
       getChatHistory: vi.fn(),
       getProducts: vi.fn(),
       getProduct: vi.fn(),
+      deleteProduct: vi.fn(),
     },
   };
 });
@@ -124,9 +125,91 @@ describe("CoreAnalystWorkspace", () => {
       updated_at: "2026-03-19T10:01:00Z",
     });
     mockSuccessfulIngestion();
+    vi.mocked(apiClient.deleteProduct).mockResolvedValue();
     vi.mocked(apiClient.getChatHistory).mockRejectedValue(
       new ApiClientError("No chat history found.", 404),
     );
+  });
+
+  it("optimistically prepends a newly ingested product without full reload", async () => {
+    vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValueOnce("product-new");
+
+    vi.mocked(apiClient.getProducts)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: "product-new",
+          workspace_id: "workspace-1",
+          platform: "generic",
+          name: "new product",
+          source_url: "https://www.g2.com/products/new-product/reviews",
+          total_reviews: 3,
+          average_rating: 4.1,
+          chat_session_count: 0,
+          latest_ingestion: {
+            ingestion_run_id: "run-new",
+            status: "success",
+            outcome_code: "ok",
+            completed_at: "2026-03-19T10:01:00Z",
+          },
+          updated_at: "2026-03-19T10:01:00Z",
+        },
+      ]);
+    vi.mocked(apiClient.getProduct).mockRejectedValue(new ApiClientError("Product not found.", 404));
+    vi.mocked(apiClient.postUrlIngestion).mockResolvedValueOnce({
+      ingestion_run_id: "run-new",
+      source_type: "scrape",
+      status: "success",
+      outcome_code: "ok",
+      captured_reviews: 3,
+      message: "Ingestion completed successfully.",
+      warnings: [],
+      diagnostics: {},
+      summary_snapshot: {
+        total_reviews: 3,
+        average_rating: 4.1,
+      },
+      started_at: "2026-03-19T10:00:00Z",
+      completed_at: "2026-03-19T10:01:00Z",
+    });
+
+    render(<CoreAnalystWorkspace />);
+
+    expect(await screen.findByText(/no products yet/i)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/review page url/i), {
+      target: { value: "https://www.g2.com/products/new-product/reviews" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run URL Ingestion" }));
+
+    expect(await screen.findByText("run-new")).toBeInTheDocument();
+    expect(await screen.findByText("new product")).toBeInTheDocument();
+    expect(await screen.findByText(/ingestion complete\. product list updated\./i)).toBeInTheDocument();
+    expect(vi.mocked(apiClient.getProducts).mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("optimistically removes a product and rolls back when delete fails", async () => {
+    vi.mocked(apiClient.deleteProduct).mockRejectedValueOnce(
+      new ApiClientError("Delete failed", 500),
+    );
+
+    render(<CoreAnalystWorkspace />);
+
+    expect(await screen.findByText("Example Product")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /delete product example product/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Example Product")).not.toBeInTheDocument();
+    });
+
+    expect(await screen.findByText(/could not delete example product\. restored product list\./i)).toBeInTheDocument();
+    expect(await screen.findByText("Example Product")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    await waitFor(() => {
+      expect(screen.queryByText(/could not delete example product\. restored product list\./i)).not.toBeInTheDocument();
+    });
   });
 
   it("hydrates persisted chat history on workspace re-entry without duplicates", async () => {

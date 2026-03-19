@@ -34,6 +34,11 @@ type WorkspaceSection = {
   placeholder: ReactNode;
 };
 
+type DashboardNotice = {
+  tone: "success" | "error";
+  message: string;
+};
+
 function parseClassification(value: unknown): ChatMessage["finalClassification"] | undefined {
   if (value === "answer" || value === "out_of_scope" || value === "insufficient_evidence") {
     return value;
@@ -110,6 +115,44 @@ function buildIngestionSnapshotFromProduct(detail: ProductDetailResponse): Inges
   };
 }
 
+function buildOptimisticProductFromIngestion(
+  context: {
+    workspaceId: string;
+    productId: string;
+    sourceUrl?: string;
+    productName?: string;
+    platform: string;
+  },
+  result: IngestionAttemptResponse,
+  current?: ProductListItem,
+): ProductListItem {
+  const nowIso = new Date().toISOString();
+  const fallbackName = context.productName?.trim() || current?.name || "Analyst Product";
+  const totalReviews = result.summary_snapshot.total_reviews ?? result.captured_reviews;
+  const avgRating =
+    typeof result.summary_snapshot.average_rating === "number"
+      ? result.summary_snapshot.average_rating
+      : (current?.average_rating ?? null);
+
+  return {
+    id: context.productId,
+    workspace_id: context.workspaceId,
+    platform: context.platform || current?.platform || "generic",
+    name: fallbackName,
+    source_url: context.sourceUrl || current?.source_url || "https://example.com/reviews",
+    total_reviews: Math.max(0, totalReviews),
+    average_rating: avgRating,
+    chat_session_count: current?.chat_session_count ?? 0,
+    latest_ingestion: {
+      ingestion_run_id: result.ingestion_run_id,
+      status: result.status,
+      outcome_code: result.outcome_code,
+      completed_at: result.completed_at,
+    },
+    updated_at: nowIso,
+  };
+}
+
 function SectionStatusBadge({ status }: { status: SectionStatus }): ReactNode {
   if (status === "ready") {
     return (
@@ -154,6 +197,8 @@ export function CoreAnalystWorkspace(): ReactNode {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isChatResponding, setIsChatResponding] = useState(false);
   const [chatSessionId, setChatSessionId] = useState<string | null>(null);
+  const [dashboardNotice, setDashboardNotice] = useState<DashboardNotice | null>(null);
+  const [pendingDeleteProductId, setPendingDeleteProductId] = useState<string | null>(null);
 
   const activeStreamControllerRef = useRef<AbortController | null>(null);
   const selectedProduct = products.find((item) => item.id === selectedProductId) ?? null;
@@ -176,7 +221,7 @@ export function CoreAnalystWorkspace(): ReactNode {
         return previous;
       });
     } catch {
-      setProducts([]);
+      setDashboardNotice({ tone: "error", message: "Unable to refresh products right now." });
     } finally {
       setIsProductsLoading(false);
     }
@@ -187,8 +232,25 @@ export function CoreAnalystWorkspace(): ReactNode {
   }, [loadProducts]);
 
   useEffect(() => {
+    if (!selectedProductId) {
+      return;
+    }
     setActiveProductId(workspaceId, selectedProductId);
   }, [workspaceId, selectedProductId]);
+
+  useEffect(() => {
+    if (!dashboardNotice || dashboardNotice.tone === "error") {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setDashboardNotice(null);
+    }, 2800);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [dashboardNotice]);
 
   useEffect(() => {
     let canceled = false;
@@ -397,6 +459,40 @@ export function CoreAnalystWorkspace(): ReactNode {
     activeStreamControllerRef.current?.abort();
   }
 
+  async function handleDeleteProduct(productId: string): Promise<void> {
+    if (pendingDeleteProductId) {
+      return;
+    }
+
+    const snapshot = products;
+    const removed = snapshot.find((item) => item.id === productId);
+    if (!removed) {
+      return;
+    }
+
+    const remaining = snapshot.filter((item) => item.id !== productId);
+    const nextSelectedProductId =
+      selectedProductId === productId
+        ? (remaining[0]?.id ?? "")
+        : selectedProductId;
+
+    setPendingDeleteProductId(productId);
+    setProducts(remaining);
+    setSelectedProductId(nextSelectedProductId);
+    setDashboardNotice({ tone: "success", message: `Removed ${removed.name}...` });
+
+    try {
+      await apiClient.deleteProduct(workspaceId, productId);
+      setDashboardNotice({ tone: "success", message: `Deleted ${removed.name}.` });
+    } catch {
+      setProducts(snapshot);
+      setSelectedProductId(selectedProductId);
+      setDashboardNotice({ tone: "error", message: `Could not delete ${removed.name}. Restored product list.` });
+    } finally {
+      setPendingDeleteProductId(null);
+    }
+  }
+
   const summarySection: WorkspaceSection = {
     id: "ingestion-summary",
     title: "Ingestion Summary",
@@ -468,11 +564,45 @@ export function CoreAnalystWorkspace(): ReactNode {
             </div>
           ) : products.length > 0 ? (
             <div className="grid gap-3">
+              {dashboardNotice ? (
+                <div
+                  role={dashboardNotice.tone === "error" ? "alert" : "status"}
+                  className={
+                    dashboardNotice.tone === "error"
+                      ? "flex items-center justify-between gap-2 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700"
+                      : "flex items-center justify-between gap-2 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-700"
+                  }
+                >
+                  <span>{dashboardNotice.message}</span>
+                  {dashboardNotice.tone === "error" ? (
+                    <button
+                      type="button"
+                      onClick={() => setDashboardNotice(null)}
+                      className="rounded border border-current/30 px-1.5 py-0.5 text-[11px] font-medium"
+                    >
+                      Dismiss
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
               {products.map((product) => (
                 <ProductCard
                   key={product.id}
                   product={product}
                   onAnalyze={setSelectedProductId}
+                  deleteAction={(
+                    <button
+                      type="button"
+                      aria-label={`Delete product ${product.name}`}
+                      disabled={pendingDeleteProductId === product.id}
+                      onClick={() => {
+                        void handleDeleteProduct(product.id);
+                      }}
+                      className="rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {pendingDeleteProductId === product.id ? "Deleting..." : "Delete"}
+                    </button>
+                  )}
                   className={
                     product.id === selectedProductId
                       ? "border-primary ring-1 ring-primary/30"
@@ -497,9 +627,51 @@ export function CoreAnalystWorkspace(): ReactNode {
           placeholder: (
             <IngestionPanel
               onProductSelected={setSelectedProductId}
-              onIngestionSuccess={(result) => {
+              onIngestionSuccess={(result, context) => {
                 setLatestIngestion(result);
-                void loadProducts();
+                setProducts((previous) => {
+                  const existing = previous.find((item) => item.id === context.productId);
+                  const optimistic = buildOptimisticProductFromIngestion(context, result, existing);
+                  const withoutCurrent = previous.filter((item) => item.id !== context.productId);
+                  return [optimistic, ...withoutCurrent];
+                });
+                setSelectedProductId(context.productId);
+                setDashboardNotice({ tone: "success", message: "Ingestion complete. Product list updated." });
+
+                void apiClient
+                  .getProduct(workspaceId, context.productId)
+                  .then((detail) => {
+                    setProducts((previous) => previous.map((item) => {
+                      if (item.id !== context.productId) {
+                        return item;
+                      }
+
+                      return {
+                        ...item,
+                        platform: detail.platform,
+                        name: detail.name,
+                        source_url: detail.source_url,
+                        total_reviews: detail.total_reviews,
+                        average_rating: detail.average_rating,
+                        chat_session_count: detail.chat_session_count,
+                        latest_ingestion: detail.latest_ingestion,
+                        updated_at: detail.updated_at,
+                      };
+                    }));
+                  })
+                  .catch(() => {
+                    void apiClient
+                      .getProducts(workspaceId)
+                      .then((items) => {
+                        setProducts(items);
+                      })
+                      .catch(() => {
+                        setDashboardNotice({
+                          tone: "error",
+                          message: "Product update confirmation is delayed. Showing optimistic data.",
+                        });
+                      });
+                  });
               }}
             />
           ),
