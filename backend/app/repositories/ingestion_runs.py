@@ -53,8 +53,7 @@ class IngestionRunRepository:
         workspace_id: UUID,
         product_id: UUID,
         source_type: IngestionSourceType,
-        target_url: str | None,
-        csv_filename: str | None,
+        source_ref: str | None,
     ) -> IngestionRun:
         now = datetime.now(timezone.utc)
         run = IngestionRun(
@@ -62,8 +61,7 @@ class IngestionRunRepository:
             product_id=product_id,
             source_type=source_type.value,
             status=IngestionRunStatus.RUNNING.value,
-            target_url=target_url,
-            csv_filename=csv_filename,
+            target_url=source_ref,
             started_at=now,
             created_at=now,
             updated_at=now,

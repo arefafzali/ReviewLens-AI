@@ -2,6 +2,8 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { ChatCitationItem } from "@/types/api";
 
 export type ChatMessageRole = "user" | "assistant";
@@ -187,7 +189,20 @@ function ChatMessageList({ messages, isResponding }: { messages: ChatMessage[]; 
                 </span>
               ) : null}
             </div>
-            <p className="text-sm text-foreground whitespace-pre-wrap">{message.content}</p>
+            {isUser ? (
+              <p className="text-sm text-foreground whitespace-pre-wrap">{message.content}</p>
+            ) : (
+              <div className="text-sm text-foreground [&_p]:my-2 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-muted [&_pre]:p-2 [&_a]:text-primary [&_a]:underline">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    a: (props) => <a {...props} target="_blank" rel="noreferrer" />,
+                  }}
+                >
+                  {message.content}
+                </ReactMarkdown>
+              </div>
+            )}
             {!isUser && presentation ? (
               <p className="mt-2 text-xs text-muted-foreground" aria-label="Classification guidance">
                 {presentation.guidance}

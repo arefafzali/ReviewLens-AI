@@ -46,8 +46,7 @@ class IngestionOrchestrationService:
                 workspace_id=payload.workspace_id,
                 product_id=payload.product_id,
                 source_type=IngestionSourceType.SCRAPE,
-                target_url=str(payload.target_url),
-                csv_filename=None,
+                source_ref=str(payload.target_url),
             )
         except IntegrityError as exc:
             raise ValueError("workspace_id and product_id must reference existing records") from exc
@@ -213,13 +212,26 @@ class IngestionOrchestrationService:
                 workspace_id=payload.workspace_id,
                 product_id=payload.product_id,
                 source_type=IngestionSourceType.CSV_UPLOAD,
-                target_url=None,
-                csv_filename=payload.csv_filename,
+                source_ref=payload.source_ref,
             )
         except IntegrityError as exc:
             raise ValueError("workspace_id and product_id must reference existing records") from exc
 
         evaluation = self._evaluate_csv(payload.csv_content)
+        base_diagnostics = dict(evaluation.diagnostics or {})
+        base_diagnostics["requested_source_ref"] = payload.source_ref
+        base_diagnostics["source_type"] = IngestionSourceType.CSV_UPLOAD.value
+        evaluation = EvaluationResult(
+            status=evaluation.status,
+            outcome_code=evaluation.outcome_code,
+            captured_reviews=evaluation.captured_reviews,
+            message=evaluation.message,
+            warnings=evaluation.warnings,
+            error_detail=evaluation.error_detail,
+            diagnostics=base_diagnostics,
+            extracted_reviews=evaluation.extracted_reviews,
+        )
+
         if evaluation.extracted_reviews:
             persistence_stats = self._repository.persist_extracted_reviews(
                 workspace_id=payload.workspace_id,

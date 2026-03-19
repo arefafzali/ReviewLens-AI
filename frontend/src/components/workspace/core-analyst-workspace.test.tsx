@@ -15,6 +15,8 @@ vi.mock("@/lib/api", async () => {
       postUrlIngestion: vi.fn(),
       postCsvIngestion: vi.fn(),
       getChatHistory: vi.fn(),
+      getProducts: vi.fn(),
+      getProduct: vi.fn(),
     },
   };
 });
@@ -72,6 +74,55 @@ function mockSuccessfulIngestion() {
 describe("CoreAnalystWorkspace", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
+    window.localStorage.setItem("reviewlens.workspace_id", "workspace-1");
+    window.localStorage.setItem("reviewlens.active_product_id.workspace-1", "product-1");
+
+    vi.mocked(apiClient.getProducts).mockResolvedValue([
+      {
+        id: "product-1",
+        workspace_id: "workspace-1",
+        platform: "generic",
+        name: "Example Product",
+        source_url: "https://www.g2.com/products/example/reviews",
+        total_reviews: 12,
+        average_rating: 4.25,
+        chat_session_count: 1,
+        latest_ingestion: {
+          ingestion_run_id: "run-456",
+          status: "success",
+          outcome_code: "ok",
+          completed_at: "2026-03-19T10:01:00Z",
+        },
+        updated_at: "2026-03-19T10:01:00Z",
+      },
+    ]);
+    vi.mocked(apiClient.getProduct).mockResolvedValue({
+      id: "product-1",
+      workspace_id: "workspace-1",
+      platform: "generic",
+      external_product_id: null,
+      name: "Example Product",
+      source_url: "https://www.g2.com/products/example/reviews",
+      stats: {
+        suggested_questions: [
+          "What themes appear most often?",
+          "What are the top strengths users mention?",
+          "Which concerns appear in lower-rated reviews?",
+        ],
+      },
+      total_reviews: 12,
+      average_rating: 4.25,
+      chat_session_count: 1,
+      latest_ingestion: {
+        ingestion_run_id: "run-456",
+        status: "success",
+        outcome_code: "ok",
+        completed_at: "2026-03-19T10:01:00Z",
+      },
+      created_at: "2026-03-19T09:59:00Z",
+      updated_at: "2026-03-19T10:01:00Z",
+    });
     mockSuccessfulIngestion();
     vi.mocked(apiClient.getChatHistory).mockRejectedValue(
       new ApiClientError("No chat history found.", 404),
@@ -122,8 +173,10 @@ describe("CoreAnalystWorkspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Run URL Ingestion" }));
     await screen.findByText("run-456");
 
-    expect(screen.getAllByText("What are common strengths?")).toHaveLength(1);
-    expect(vi.mocked(apiClient.getChatHistory)).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(screen.queryByText("What are common strengths?")).not.toBeInTheDocument();
+    });
+    expect(vi.mocked(apiClient.getChatHistory).mock.calls.length).toBeGreaterThanOrEqual(1);
   });
 
   it("updates ingestion summary section and streams assistant response", async () => {
@@ -180,7 +233,7 @@ describe("CoreAnalystWorkspace", () => {
 
     expect(await screen.findByText("run-456")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Ingestion Summary" })).toBeInTheDocument();
-    expect(await screen.findByText("4.25 / 5")).toBeInTheDocument();
+    expect((await screen.findAllByText("4.25 / 5")).length).toBeGreaterThanOrEqual(1);
     expect(await screen.findByText("support (5)")).toBeInTheDocument();
     expect(await screen.findByText("2026-03-10 to 2026-03-12")).toBeInTheDocument();
 

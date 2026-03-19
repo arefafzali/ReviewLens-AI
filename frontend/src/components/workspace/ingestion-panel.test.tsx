@@ -110,7 +110,7 @@ describe("IngestionPanel", () => {
 
     expect(apiClient.postCsvIngestion).toHaveBeenCalledWith(
       expect.objectContaining({
-        csv_filename: "reviews.csv",
+        source_ref: expect.stringMatching(/^https:\/\/csv\.upload\.local\/[a-f0-9]+$/),
       }),
     );
     expect(apiClient.postEnsureContext).toHaveBeenCalledTimes(1);

@@ -36,7 +36,7 @@ export type URLIngestionPayload = {
 export type CSVIngestionPayload = {
   workspace_id: string;
   product_id: string;
-  csv_filename?: string | null;
+  source_ref: string;
   csv_content: string;
 };
 
@@ -162,4 +162,40 @@ export type PersistedChatMessage = {
 export type ChatHistoryResponse = {
   chat_session_id: string;
   messages: PersistedChatMessage[];
+};
+
+export type ProductIngestionSnapshot = {
+  ingestion_run_id?: string | null;
+  status?: string | null;
+  outcome_code?: string | null;
+  completed_at?: string | null;
+};
+
+export type ProductListItem = {
+  id: string;
+  workspace_id: string;
+  platform: string;
+  name: string;
+  source_url: string;
+  total_reviews: number;
+  average_rating?: number | null;
+  chat_session_count: number;
+  latest_ingestion: ProductIngestionSnapshot;
+  updated_at: string;
+};
+
+export type ProductDetailResponse = {
+  id: string;
+  workspace_id: string;
+  platform: string;
+  external_product_id?: string | null;
+  name: string;
+  source_url: string;
+  stats: Record<string, unknown>;
+  total_reviews: number;
+  average_rating?: number | null;
+  chat_session_count: number;
+  latest_ingestion: ProductIngestionSnapshot;
+  created_at: string;
+  updated_at: string;
 };

@@ -157,7 +157,7 @@ def test_csv_ingestion_failure_empty_csv_is_persisted() -> None:
         CSVIngestionRequest(
             workspace_id=workspace_id,
             product_id=product_id,
-            csv_filename="reviews.csv",
+            source_ref="https://csv.upload.local/reviews-csv",
             csv_content="   ",
         )
     )
@@ -182,7 +182,7 @@ Solid feature set for teams,4,Ana T,Useful,2026-03-02
         CSVIngestionRequest(
             workspace_id=workspace_id,
             product_id=product_id,
-            csv_filename="reviews.csv",
+            source_ref="https://csv.upload.local/reviews-csv",
             csv_content=csv_content,
         )
     )
@@ -199,6 +199,7 @@ Solid feature set for teams,4,Ana T,Useful,2026-03-02
 
     product = db.query(Product).filter(Product.id == product_id).one()
     run = db.query(IngestionRun).filter(IngestionRun.id == result.ingestion_run_id).one()
+    assert run.target_url == "https://csv.upload.local/reviews-csv"
     assert product.stats["total_reviews"] == 2
     assert "rating_histogram" in product.stats
     assert len(product.stats["suggested_questions"]) >= 4
@@ -221,7 +222,7 @@ Works well,5,Sam,unexpected
         CSVIngestionRequest(
             workspace_id=workspace_id,
             product_id=product_id,
-            csv_filename="broken.csv",
+            source_ref="https://csv.upload.local/broken-csv",
             csv_content=malformed_csv,
         )
     )
@@ -303,8 +304,7 @@ def test_url_ingestion_uses_cache_when_reviews_already_stored(monkeypatch) -> No
         workspace_id=workspace_id,
         product_id=product_id,
         source_type=IngestionSourceType.SCRAPE,
-        target_url=CAPTERRA_PRESSPAGE_REVIEWS_URL,
-        csv_filename=None,
+        source_ref=CAPTERRA_PRESSPAGE_REVIEWS_URL,
     )
     inserted = repository.persist_extracted_reviews(
         workspace_id=workspace_id,
@@ -365,8 +365,7 @@ def test_url_ingestion_cache_hit_uses_product_summary_when_latest_cached_run_has
         workspace_id=workspace_id,
         product_id=product_id,
         source_type=IngestionSourceType.SCRAPE,
-        target_url=CAPTERRA_PRESSPAGE_REVIEWS_URL,
-        csv_filename=None,
+        source_ref=CAPTERRA_PRESSPAGE_REVIEWS_URL,
     )
     inserted = repository.persist_extracted_reviews(
         workspace_id=workspace_id,
@@ -399,8 +398,7 @@ def test_url_ingestion_cache_hit_uses_product_summary_when_latest_cached_run_has
         workspace_id=workspace_id,
         product_id=product_id,
         source_type=IngestionSourceType.SCRAPE,
-        target_url=CAPTERRA_PRESSPAGE_REVIEWS_URL,
-        csv_filename=None,
+        source_ref=CAPTERRA_PRESSPAGE_REVIEWS_URL,
     )
     duplicate_only_inserted = repository.persist_extracted_reviews(
         workspace_id=workspace_id,
@@ -461,8 +459,7 @@ def test_url_ingestion_reload_bypasses_cache_and_reextracts(monkeypatch) -> None
         workspace_id=workspace_id,
         product_id=product_id,
         source_type=IngestionSourceType.SCRAPE,
-        target_url=CAPTERRA_PRESSPAGE_REVIEWS_URL,
-        csv_filename=None,
+        source_ref=CAPTERRA_PRESSPAGE_REVIEWS_URL,
     )
     repository.persist_extracted_reviews(
         workspace_id=workspace_id,
@@ -546,7 +543,7 @@ Reporting needs improvement,2,Ana,2026-03-02
         CSVIngestionRequest(
             workspace_id=workspace_id,
             product_id=product_id,
-            csv_filename="reviews.csv",
+            source_ref="https://csv.upload.local/reviews-csv",
             csv_content=csv_content,
         )
     )

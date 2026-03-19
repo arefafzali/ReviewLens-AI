@@ -4,6 +4,7 @@ import React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
+import { ProductCard } from "@/components/dashboard/product-card";
 import {
   AnalystChatPanel,
   createStreamingAssistantMessage,
@@ -15,12 +16,13 @@ import { ChatStreamTransportError, streamChatCompletion } from "@/lib/chat-strea
 import {
   getStoredChatSessionId,
   getWorkspaceContextIds,
+  setActiveProductId,
   setStoredChatSessionId,
 } from "@/lib/workspace-context";
 import { IngestionPanel } from "@/components/workspace/ingestion-panel";
 import { IngestionSummaryDashboard } from "@/components/workspace/ingestion-summary-dashboard";
 import { SuggestedQuestions } from "@/components/workspace/suggested-questions";
-import type { ChatCitationItem, IngestionAttemptResponse } from "@/types/api";
+import type { ChatCitationItem, IngestionAttemptResponse, IngestionOutcomeCode, IngestionRunStatus, ProductDetailResponse, ProductListItem } from "@/types/api";
 
 type SectionStatus = "loading" | "ready";
 
@@ -50,6 +52,62 @@ function parseCitations(value: unknown): ChatCitationItem[] {
       ...item,
       rank: typeof item.rank === "number" ? item.rank : 0,
     }));
+}
+
+function parseRunStatus(value: unknown): IngestionRunStatus {
+  if (value === "running" || value === "success" || value === "partial" || value === "failed") {
+    return value;
+  }
+  return "success";
+}
+
+function parseOutcomeCode(value: unknown): IngestionOutcomeCode {
+  if (
+    value === "ok" ||
+    value === "low_data" ||
+    value === "blocked" ||
+    value === "parse_failed" ||
+    value === "unsupported_source" ||
+    value === "invalid_url" ||
+    value === "empty_csv" ||
+    value === "malformed_csv"
+  ) {
+    return value;
+  }
+  return "ok";
+}
+
+function parseSuggestedQuestionsFromStats(stats: Record<string, unknown>): string[] {
+  const raw = stats.suggested_questions;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+}
+
+function buildIngestionSnapshotFromProduct(detail: ProductDetailResponse): IngestionAttemptResponse | null {
+  const hasIngestion = Boolean(detail.latest_ingestion?.ingestion_run_id) || detail.total_reviews > 0;
+  if (!hasIngestion) {
+    return null;
+  }
+
+  return {
+    ingestion_run_id: detail.latest_ingestion?.ingestion_run_id ?? `product-${detail.id}`,
+    source_type: "scrape",
+    status: parseRunStatus(detail.latest_ingestion?.status),
+    outcome_code: parseOutcomeCode(detail.latest_ingestion?.outcome_code),
+    captured_reviews: detail.total_reviews,
+    message: "Loaded latest product snapshot.",
+    warnings: [],
+    diagnostics: {},
+    summary_snapshot: {
+      total_reviews: detail.total_reviews,
+      average_rating: detail.average_rating ?? null,
+      suggested_questions: parseSuggestedQuestionsFromStats(detail.stats),
+    },
+    started_at: detail.latest_ingestion?.completed_at ?? null,
+    completed_at: detail.latest_ingestion?.completed_at ?? null,
+  };
 }
 
 function SectionStatusBadge({ status }: { status: SectionStatus }): ReactNode {
@@ -86,43 +144,113 @@ function WorkspaceSectionCard({ section }: { section: WorkspaceSection }): React
 }
 
 export function CoreAnalystWorkspace(): ReactNode {
+  const initialContext = getWorkspaceContextIds();
+  const workspaceId = initialContext.workspaceId;
+
+  const [products, setProducts] = useState<ProductListItem[]>([]);
+  const [isProductsLoading, setIsProductsLoading] = useState(true);
+  const [selectedProductId, setSelectedProductId] = useState<string>(initialContext.productId);
   const [latestIngestion, setLatestIngestion] = useState<IngestionAttemptResponse | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isChatResponding, setIsChatResponding] = useState(false);
   const [chatSessionId, setChatSessionId] = useState<string | null>(null);
 
   const activeStreamControllerRef = useRef<AbortController | null>(null);
-  const historyHydratedRef = useRef(false);
+  const selectedProduct = products.find((item) => item.id === selectedProductId) ?? null;
+  const canAnalyzeSelectedProduct = Boolean(latestIngestion) || (selectedProduct?.total_reviews ?? 0) > 0 || chatMessages.length > 0;
 
   const suggestedQuestions = latestIngestion?.summary_snapshot?.suggested_questions ?? [];
   const hasConversationStarted = chatMessages.length > 0;
 
-  useEffect(() => {
-    if (historyHydratedRef.current) {
-      return;
+  const loadProducts = useCallback(async () => {
+    try {
+      const items = await apiClient.getProducts(workspaceId);
+      setProducts(items);
+      setSelectedProductId((previous) => {
+        if (items.some((item) => item.id === previous)) {
+          return previous;
+        }
+        if (!previous && items.length > 0) {
+          return items[0].id;
+        }
+        return previous;
+      });
+    } catch {
+      setProducts([]);
+    } finally {
+      setIsProductsLoading(false);
     }
-    historyHydratedRef.current = true;
+  }, [workspaceId]);
 
+  useEffect(() => {
+    void loadProducts();
+  }, [loadProducts]);
+
+  useEffect(() => {
+    setActiveProductId(workspaceId, selectedProductId);
+  }, [workspaceId, selectedProductId]);
+
+  useEffect(() => {
     let canceled = false;
-    const { workspaceId, productId } = getWorkspaceContextIds();
-    const storedSessionId = getStoredChatSessionId(workspaceId, productId) ?? undefined;
+    const storedSessionId = getStoredChatSessionId(workspaceId, selectedProductId) ?? undefined;
+
+    activeStreamControllerRef.current?.abort();
+    activeStreamControllerRef.current = null;
+    setIsChatResponding(false);
+    setChatMessages([]);
+    setChatSessionId(null);
+
+    if (!selectedProductId) {
+      return () => {
+        canceled = true;
+      };
+    }
 
     void apiClient
-      .getChatHistory(workspaceId, productId, storedSessionId)
+      .getProduct(workspaceId, selectedProductId)
+      .then((productDetail) => {
+        if (canceled) {
+          return;
+        }
+        const snapshot = buildIngestionSnapshotFromProduct(productDetail);
+        setLatestIngestion((previous) => {
+          if (!snapshot) {
+            return null;
+          }
+
+          if (
+            previous &&
+            previous.ingestion_run_id === snapshot.ingestion_run_id &&
+            Object.keys(previous.summary_snapshot ?? {}).length > Object.keys(snapshot.summary_snapshot ?? {}).length
+          ) {
+            return previous;
+          }
+
+          return snapshot;
+        });
+      })
+      .catch((error: unknown) => {
+        if (canceled) {
+          return;
+        }
+        if (error instanceof ApiClientError && error.status === 404) {
+          setLatestIngestion(null);
+          return;
+        }
+      });
+
+    void apiClient
+      .getChatHistory(workspaceId, selectedProductId, storedSessionId)
       .then((history) => {
         if (canceled) {
           return;
         }
 
         setChatSessionId(history.chat_session_id);
-        setStoredChatSessionId(workspaceId, productId, history.chat_session_id);
+        setStoredChatSessionId(workspaceId, selectedProductId, history.chat_session_id);
 
-        setChatMessages((previous) => {
-          if (previous.length > 0) {
-            return previous;
-          }
-
-          return history.messages.map((item) => {
+        setChatMessages(
+          history.messages.map((item) => {
             const metadata = item.metadata ?? {};
             return {
               id: `persisted-${history.chat_session_id}-${item.message_index}`,
@@ -134,8 +262,8 @@ export function CoreAnalystWorkspace(): ReactNode {
                 (item.is_refusal ? "out_of_scope" : undefined),
               citations: parseCitations((metadata as Record<string, unknown>).citations),
             };
-          });
-        });
+          }),
+        );
       })
       .catch((error: unknown) => {
         if (canceled) {
@@ -150,7 +278,7 @@ export function CoreAnalystWorkspace(): ReactNode {
     return () => {
       canceled = true;
     };
-  }, []);
+  }, [workspaceId, selectedProductId]);
 
   const appendTokenToMessage = useCallback((messageId: string, token: string) => {
     setChatMessages((previous) =>
@@ -189,11 +317,10 @@ export function CoreAnalystWorkspace(): ReactNode {
   );
 
   async function appendQuestionToChat(question: string): Promise<void> {
-    if (!latestIngestion || isChatResponding) {
+    if (!selectedProductId || !canAnalyzeSelectedProduct || isChatResponding) {
       return;
     }
 
-    const { workspaceId, productId } = getWorkspaceContextIds();
     const userMessage = createUserChatMessage(question);
     const assistantMessage = createStreamingAssistantMessage();
     const assistantMessageId = assistantMessage.id;
@@ -208,21 +335,21 @@ export function CoreAnalystWorkspace(): ReactNode {
       const done = await streamChatCompletion({
         payload: {
           workspace_id: workspaceId,
-          product_id: productId,
+          product_id: selectedProductId,
           question,
           ...(chatSessionId ? { chat_session_id: chatSessionId } : {}),
         },
         signal: controller.signal,
         onMeta: (meta) => {
           setChatSessionId(meta.chat_session_id);
-          setStoredChatSessionId(workspaceId, productId, meta.chat_session_id);
+          setStoredChatSessionId(workspaceId, selectedProductId, meta.chat_session_id);
         },
         onToken: ({ text }) => {
           appendTokenToMessage(assistantMessageId, text);
         },
         onDone: (payload) => {
           setChatSessionId(payload.chat_session_id);
-          setStoredChatSessionId(workspaceId, productId, payload.chat_session_id);
+          setStoredChatSessionId(workspaceId, selectedProductId, payload.chat_session_id);
           finalizeAssistantMessage(assistantMessageId, {
             content: payload.answer,
             citations: payload.citations,
@@ -308,8 +435,8 @@ export function CoreAnalystWorkspace(): ReactNode {
     id: "analyst-chat",
     title: "Analyst Chat",
     description: "Host scoped multi-turn Q&A with source-grounded answers from ingested reviews.",
-    status: latestIngestion || chatMessages.length > 0 ? "ready" : "loading",
-    placeholder: latestIngestion || chatMessages.length > 0 ? (
+    status: canAnalyzeSelectedProduct ? "ready" : "loading",
+    placeholder: canAnalyzeSelectedProduct ? (
       <AnalystChatPanel
         messages={chatMessages}
         onSubmitQuestion={appendQuestionToChat}
@@ -330,11 +457,52 @@ export function CoreAnalystWorkspace(): ReactNode {
     <div className="grid gap-4 md:grid-cols-2">
       <WorkspaceSectionCard
         section={{
+          id: "product-selector",
+          title: "Products",
+          description: "Each source URL is tracked as a separate product. Select one to analyze in isolation.",
+          status: isProductsLoading ? "loading" : "ready",
+          placeholder: isProductsLoading ? (
+            <div className="grid gap-3">
+              <div className="h-24 animate-pulse rounded-md bg-muted" />
+              <div className="h-24 animate-pulse rounded-md bg-muted" />
+            </div>
+          ) : products.length > 0 ? (
+            <div className="grid gap-3">
+              {products.map((product) => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  onAnalyze={setSelectedProductId}
+                  className={
+                    product.id === selectedProductId
+                      ? "border-primary ring-1 ring-primary/30"
+                      : ""
+                  }
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="rounded-md border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
+              No products yet. Run URL ingestion and each unique URL will be stored as its own product.
+            </p>
+          ),
+        }}
+      />
+      <WorkspaceSectionCard
+        section={{
           id: "ingestion-panel",
           title: "Ingestion Panel",
-          description: "Submit a URL or upload CSV reviews to start a run.",
+          description: "Submit a URL or upload CSV reviews for the currently selected product.",
           status: "ready",
-          placeholder: <IngestionPanel onIngestionSuccess={setLatestIngestion} />,
+          placeholder: (
+            <IngestionPanel
+              onProductSelected={setSelectedProductId}
+              onIngestionSuccess={(result) => {
+                setLatestIngestion(result);
+                void loadProducts();
+              }}
+            />
+          ),
         }}
       />
       <WorkspaceSectionCard key={summarySection.id} section={summarySection} />

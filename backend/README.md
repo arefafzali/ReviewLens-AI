@@ -53,6 +53,23 @@ docker compose up --build backend db
 - `POST /ingestion/csv`
 - `POST /chat/stream` (SSE)
 
+## Product persistence APIs
+
+- `GET /products?workspace_id=<uuid>`
+- `GET /products/{id}?workspace_id=<uuid>`
+- `DELETE /products/{id}?workspace_id=<uuid>`
+
+Product APIs are workspace-aware and return summary fields suitable for dashboard/list
+and product detail pages, including:
+
+- `total_reviews`
+- `average_rating`
+- `chat_session_count`
+- latest ingestion status snapshot
+
+Delete semantics are productized for portal cleanup: deleting a product removes dependent
+reviews, chat sessions/messages, and ingestion runs for that workspace/product context.
+
 `POST /context/ensure` is an idempotent bootstrap endpoint used by the frontend
 to ensure `workspace_id` and `product_id` records exist before ingestion calls.
 This prevents foreign-key failures when browser-local IDs are first seen by the backend.
@@ -76,6 +93,14 @@ Optional aliases:
 CSV rows are normalized to the same downstream review shape as URL ingestion:
 
 - `title`, `body`, `rating`, `author`, `date`, `url`
+
+URL and CSV attempts now share one source reference storage path in `ingestion_runs.target_url`.
+The only discriminator between sources is `source_type` (`scrape` or `csv_upload`).
+
+`POST /ingestion/csv` request includes:
+
+- `source_ref`: stable source identifier for the CSV import (frontend generates and reuses this per CSV source)
+- `csv_content`: raw CSV data
 
 Both endpoints create an `ingestion_runs` record for each attempt and return a
 typed ingestion result contract containing:

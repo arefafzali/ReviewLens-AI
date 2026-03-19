@@ -10,6 +10,8 @@ The root page now provides a minimal analyst workspace surface for the core loop
 	- A URL input with validation and backend submission to `/ingestion/url`
 	- CSV upload with backend submission to `/ingestion/csv`
 	- Frontend first calls `/context/ensure` to guarantee workspace/product IDs exist before ingestion
+	- URL and CSV both create/select product-scoped context before ingestion, so each source is analyzed independently
+	- CSV requests send `source_ref` + `csv_content` and are persisted through the same ingestion source-reference field as URL runs
 - ingestion summary section updates after successful URL or CSV ingestion without page reload
 	- renders capture stats, rating histogram, review trend, and top recurring keywords from backend analytics
 	- handles sparse datasets with explicit low-signal guidance
@@ -29,6 +31,18 @@ The root page now provides a minimal analyst workspace surface for the core loop
 	- citation cards include available review metadata (evidence id, title, author, date, rating) when present
 	- recent persisted conversation history is hydrated on workspace re-entry/page refresh
 	- active chat session id is persisted per workspace/product to keep follow-up turns coherent
+
+Reusable dashboard components:
+
+- `ProductCard` (`src/components/dashboard/product-card.tsx`) provides a typed, reusable product summary card
+- Displays name, platform/source badge, review count, average rating, latest capture time, analyze CTA, and optional delete-action slot
+- Handles partial/missing product fields with safe fallback labels
+
+Product selection behavior:
+
+- The workspace renders a product selector list and scopes summary/chat/history to the selected product only
+- URL sources map to stable product IDs via normalized URL keys
+- CSV sources map to stable product IDs via generated CSV source fingerprints
 
 When URL ingestion is blocked or low-confidence, the ingestion panel provides inline CSV fallback guidance.
 

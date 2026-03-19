@@ -15,6 +15,6 @@ describe("HomePage", () => {
     expect(screen.getByRole("tab", { name: "Ingest from URL" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Upload CSV" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Run URL Ingestion" })).toBeInTheDocument();
-    expect(screen.getAllByText("Loading")).toHaveLength(3);
+    expect(screen.getAllByText("Loading")).toHaveLength(4);
   });
 });

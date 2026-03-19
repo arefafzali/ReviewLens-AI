@@ -55,6 +55,27 @@ describe("AnalystChatPanel", () => {
     expect(screen.getByText(/grounded answer from ingested reviews/i)).toBeInTheDocument();
   });
 
+  it("renders assistant markdown formatting", () => {
+    render(
+      <AnalystChatPanel
+        onSubmitQuestion={vi.fn()}
+        messages={[
+          {
+            id: "m-md",
+            role: "assistant",
+            content: "## Highlights\n\n- **Fast onboarding**\n- [Read source](https://example.com)",
+            state: "complete",
+            finalClassification: "answer",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { level: 2, name: "Highlights" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Read source" })).toHaveAttribute("href", "https://example.com");
+    expect(screen.getByText("Fast onboarding")).toBeInTheDocument();
+  });
+
   it("renders out-of-scope classification distinctly", () => {
     render(
       <AnalystChatPanel

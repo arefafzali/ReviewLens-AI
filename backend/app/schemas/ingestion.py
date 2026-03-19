@@ -61,7 +61,7 @@ class CSVIngestionRequest(BaseModel):
 
     workspace_id: UUID
     product_id: UUID
-    csv_filename: str | None = Field(default=None, max_length=255)
+    source_ref: str = Field(min_length=1, max_length=2048)
     csv_content: str = Field(default="")
 
 

@@ -23,4 +23,8 @@ OPENAPI_TAGS = [
         "name": "chat",
         "description": "Guardrailed chat APIs for product-scoped streaming analysis.",
     },
+    {
+        "name": "products",
+        "description": "Workspace-aware product listing/detail/deletion APIs for portal pages.",
+    },
 ]

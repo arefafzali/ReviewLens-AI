@@ -4,7 +4,10 @@ import React, { useMemo, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 
 import { ApiClientError, apiClient } from "@/lib/api";
-import { getWorkspaceContextIds } from "@/lib/workspace-context";
+import {
+  getOrCreateProductContextForCsv,
+  getOrCreateProductContextForUrl,
+} from "@/lib/workspace-context";
 import type { FastApiErrorResponse, FastApiValidationIssue, IngestionAttemptResponse } from "@/types/api";
 
 type SubmissionMode = "url" | "csv";
@@ -28,18 +31,21 @@ const MAX_CSV_BYTES = 5 * 1024 * 1024;
 
 type IngestionPanelProps = {
   onIngestionSuccess?: (result: IngestionAttemptResponse) => void;
+  onProductSelected?: (productId: string) => void;
 };
 
 async function ensureBackendContext(
   workspaceId: string,
   productId: string,
   sourceUrl: string | undefined,
+  productName?: string,
+  platform: "generic" | "csv" = "generic",
 ): Promise<void> {
   await apiClient.postEnsureContext({
     workspace_id: workspaceId,
     product_id: productId,
-    platform: "generic",
-    product_name: "Analyst Product",
+    platform,
+    product_name: productName ?? "Analyst Product",
     source_url: sourceUrl,
   });
 }
@@ -150,7 +156,7 @@ function renderResultTone(result: IngestionAttemptResponse): "error" | "success"
   return "success";
 }
 
-export function IngestionPanel({ onIngestionSuccess }: IngestionPanelProps): ReactNode {
+export function IngestionPanel({ onIngestionSuccess, onProductSelected }: IngestionPanelProps): ReactNode {
   const [mode, setMode] = useState<SubmissionMode>("url");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [progressText, setProgressText] = useState<string | null>(null);
@@ -193,15 +199,16 @@ export function IngestionPanel({ onIngestionSuccess }: IngestionPanelProps): Rea
     setProgressText("Submitting URL ingestion request...");
 
     try {
-      const { workspaceId, productId } = getWorkspaceContextIds();
-      await ensureBackendContext(workspaceId, productId, urlForm.targetUrl.trim());
+      const context = getOrCreateProductContextForUrl(urlForm.targetUrl.trim());
+      await ensureBackendContext(context.workspaceId, context.productId, context.sourceUrl, context.productName, "generic");
       const result = await apiClient.postUrlIngestion({
-        workspace_id: workspaceId,
-        product_id: productId,
-        target_url: urlForm.targetUrl.trim(),
+        workspace_id: context.workspaceId,
+        product_id: context.productId,
+        target_url: context.sourceUrl,
         reload: false,
       });
 
+      onProductSelected?.(context.productId);
       commitSuccessResult(result);
     } catch (error) {
       setNotice({ tone: "error", message: extractBackendErrorMessage(error) });
@@ -226,17 +233,18 @@ export function IngestionPanel({ onIngestionSuccess }: IngestionPanelProps): Rea
     try {
       setProgressText("Reading selected CSV file...");
       const csvContent = await readFileAsText(csvForm.file);
+      const context = await getOrCreateProductContextForCsv(csvForm.file.name, csvContent);
 
       setProgressText("Uploading CSV for ingestion and parsing...");
-      const { workspaceId, productId } = getWorkspaceContextIds();
-      await ensureBackendContext(workspaceId, productId, undefined);
+      await ensureBackendContext(context.workspaceId, context.productId, context.sourceUrl, context.productName, "csv");
       const result = await apiClient.postCsvIngestion({
-        workspace_id: workspaceId,
-        product_id: productId,
-        csv_filename: csvForm.file.name,
+        workspace_id: context.workspaceId,
+        product_id: context.productId,
+        source_ref: context.sourceUrl,
         csv_content: csvContent,
       });
 
+      onProductSelected?.(context.productId);
       commitSuccessResult(result);
     } catch (error) {
       setNotice({ tone: "error", message: extractBackendErrorMessage(error) });

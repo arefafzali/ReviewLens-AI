@@ -53,7 +53,6 @@ class IngestionRun(Base):
     status: Mapped[str] = mapped_column(String(32), default="running", nullable=False)
     outcome_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
     target_url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    csv_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     records_ingested: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     error_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     result_metadata: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)

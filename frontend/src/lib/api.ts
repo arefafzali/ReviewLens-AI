@@ -7,6 +7,8 @@ import type {
   FastApiErrorResponse,
   HealthResponse,
   IngestionAttemptResponse,
+  ProductDetailResponse,
+  ProductListItem,
   URLIngestionPayload,
 } from "@/types/api";
 
@@ -84,6 +86,21 @@ export class ApiClient {
       params.set("chat_session_id", chatSessionId);
     }
     return this.request<ChatHistoryResponse>(`/chat/history?${params.toString()}`, { method: "GET" });
+  }
+
+  async getProducts(workspaceId: string): Promise<ProductListItem[]> {
+    const params = new URLSearchParams({ workspace_id: workspaceId });
+    return this.request<ProductListItem[]>(`/products?${params.toString()}`, { method: "GET" });
+  }
+
+  async getProduct(workspaceId: string, productId: string): Promise<ProductDetailResponse> {
+    const params = new URLSearchParams({ workspace_id: workspaceId });
+    return this.request<ProductDetailResponse>(`/products/${productId}?${params.toString()}`, { method: "GET" });
+  }
+
+  async deleteProduct(workspaceId: string, productId: string): Promise<void> {
+    const params = new URLSearchParams({ workspace_id: workspaceId });
+    await this.request<unknown>(`/products/${productId}?${params.toString()}`, { method: "DELETE" });
   }
 
   private async request<T>(path: string, init: RequestInit, timeoutMs: number = this.timeoutMs): Promise<T> {
