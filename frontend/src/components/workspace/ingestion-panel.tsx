@@ -4,6 +4,7 @@ import React, { useMemo, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 
 import { ApiClientError, apiClient } from "@/lib/api";
+import { getWorkspaceContextIds } from "@/lib/workspace-context";
 import type { FastApiErrorResponse, FastApiValidationIssue, IngestionAttemptResponse } from "@/types/api";
 
 type SubmissionMode = "url" | "csv";
@@ -24,49 +25,10 @@ type CSVFormState = {
 };
 
 const MAX_CSV_BYTES = 5 * 1024 * 1024;
-const WORKSPACE_STORAGE_KEY = "reviewlens.workspace_id";
-const PRODUCT_STORAGE_KEY = "reviewlens.product_id";
 
 type IngestionPanelProps = {
   onIngestionSuccess?: (result: IngestionAttemptResponse) => void;
 };
-
-function stableUuidFallback(): string {
-  const randomHex = Math.random().toString(16).slice(2).padEnd(12, "0").slice(0, 12);
-  return `00000000-0000-4000-8000-${randomHex}`;
-}
-
-function createStableId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return stableUuidFallback();
-}
-
-function getOrCreateId(storageKey: string): string {
-  if (typeof window === "undefined") {
-    return createStableId();
-  }
-
-  const existing = window.localStorage.getItem(storageKey);
-  if (existing) {
-    return existing;
-  }
-
-  const created = createStableId();
-  window.localStorage.setItem(storageKey, created);
-  return created;
-}
-
-function getWorkspaceContextIds(): { workspaceId: string; productId: string } {
-  const workspaceFromEnv = process.env.NEXT_PUBLIC_REVIEWLENS_WORKSPACE_ID;
-  const productFromEnv = process.env.NEXT_PUBLIC_REVIEWLENS_PRODUCT_ID;
-
-  return {
-    workspaceId: workspaceFromEnv ?? getOrCreateId(WORKSPACE_STORAGE_KEY),
-    productId: productFromEnv ?? getOrCreateId(PRODUCT_STORAGE_KEY),
-  };
-}
 
 async function ensureBackendContext(
   workspaceId: string,

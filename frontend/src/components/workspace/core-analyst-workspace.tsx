@@ -1,18 +1,21 @@
 "use client";
 
 import React from "react";
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import {
   AnalystChatPanel,
-  buildChatMessagesForQuestion,
+  createStreamingAssistantMessage,
+  createUserChatMessage,
   type ChatMessage,
 } from "@/components/workspace/analyst-chat-panel";
+import { streamChatCompletion } from "@/lib/chat-stream";
+import { getWorkspaceContextIds } from "@/lib/workspace-context";
 import { IngestionPanel } from "@/components/workspace/ingestion-panel";
 import { IngestionSummaryDashboard } from "@/components/workspace/ingestion-summary-dashboard";
 import { SuggestedQuestions } from "@/components/workspace/suggested-questions";
-import type { IngestionAttemptResponse } from "@/types/api";
+import type { ChatCitationItem, IngestionAttemptResponse } from "@/types/api";
 
 type SectionStatus = "loading" | "ready";
 
@@ -60,13 +63,123 @@ function WorkspaceSectionCard({ section }: { section: WorkspaceSection }): React
 export function CoreAnalystWorkspace(): ReactNode {
   const [latestIngestion, setLatestIngestion] = useState<IngestionAttemptResponse | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [isChatResponding, setIsChatResponding] = useState(false);
+  const [chatSessionId, setChatSessionId] = useState<string | null>(null);
+
+  const activeStreamControllerRef = useRef<AbortController | null>(null);
 
   const suggestedQuestions = latestIngestion?.summary_snapshot?.suggested_questions ?? [];
   const hasConversationStarted = chatMessages.length > 0;
 
-  function appendQuestionToChat(question: string): void {
-    const nextMessages = buildChatMessagesForQuestion(question);
-    setChatMessages((previous) => [...previous, ...nextMessages]);
+  const appendTokenToMessage = useCallback((messageId: string, token: string) => {
+    setChatMessages((previous) =>
+      previous.map((message) => {
+        if (message.id !== messageId) {
+          return message;
+        }
+
+        return {
+          ...message,
+          content: `${message.content}${token}`,
+        };
+      }),
+    );
+  }, []);
+
+  const finalizeAssistantMessage = useCallback(
+    (messageId: string, payload: { content: string; citations?: ChatCitationItem[]; classification?: ChatMessage["finalClassification"] }) => {
+      setChatMessages((previous) =>
+        previous.map((message) => {
+          if (message.id !== messageId) {
+            return message;
+          }
+
+          return {
+            ...message,
+            content: payload.content,
+            state: "complete",
+            finalClassification: payload.classification,
+          };
+        }),
+      );
+    },
+    [],
+  );
+
+  async function appendQuestionToChat(question: string): Promise<void> {
+    if (!latestIngestion || isChatResponding) {
+      return;
+    }
+
+    const { workspaceId, productId } = getWorkspaceContextIds();
+    const userMessage = createUserChatMessage(question);
+    const assistantMessage = createStreamingAssistantMessage();
+    const assistantMessageId = assistantMessage.id;
+
+    setChatMessages((previous) => [...previous, userMessage, assistantMessage]);
+    setIsChatResponding(true);
+
+    const controller = new AbortController();
+    activeStreamControllerRef.current = controller;
+
+    try {
+      const done = await streamChatCompletion({
+        payload: {
+          workspace_id: workspaceId,
+          product_id: productId,
+          question,
+          ...(chatSessionId ? { chat_session_id: chatSessionId } : {}),
+        },
+        signal: controller.signal,
+        onMeta: (meta) => {
+          setChatSessionId(meta.chat_session_id);
+        },
+        onToken: ({ text }) => {
+          appendTokenToMessage(assistantMessageId, text);
+        },
+        onDone: (payload) => {
+          setChatSessionId(payload.chat_session_id);
+          finalizeAssistantMessage(assistantMessageId, {
+            content: payload.answer,
+            citations: payload.citations,
+            classification: payload.classification,
+          });
+        },
+        onError: (payload) => {
+          finalizeAssistantMessage(assistantMessageId, {
+            content: payload.message || "Unable to complete this response.",
+            classification: "insufficient_evidence",
+          });
+        },
+      });
+
+      finalizeAssistantMessage(assistantMessageId, {
+        content: done.answer,
+        citations: done.citations,
+        classification: done.classification,
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        finalizeAssistantMessage(assistantMessageId, {
+          content: "Response canceled by analyst.",
+          classification: "insufficient_evidence",
+        });
+      } else {
+        finalizeAssistantMessage(assistantMessageId, {
+          content: "Unable to complete this response right now. Please retry.",
+          classification: "insufficient_evidence",
+        });
+      }
+    } finally {
+      if (activeStreamControllerRef.current === controller) {
+        activeStreamControllerRef.current = null;
+      }
+      setIsChatResponding(false);
+    }
+  }
+
+  function cancelActiveResponse(): void {
+    activeStreamControllerRef.current?.abort();
   }
 
   const summarySection: WorkspaceSection = {
@@ -109,7 +222,13 @@ export function CoreAnalystWorkspace(): ReactNode {
     description: "Host scoped multi-turn Q&A with source-grounded answers from ingested reviews.",
     status: latestIngestion ? "ready" : "loading",
     placeholder: latestIngestion ? (
-      <AnalystChatPanel messages={chatMessages} onSubmitQuestion={appendQuestionToChat} disabled={false} />
+      <AnalystChatPanel
+        messages={chatMessages}
+        onSubmitQuestion={appendQuestionToChat}
+        disabled={false}
+        isResponding={isChatResponding}
+        onCancelResponse={cancelActiveResponse}
+      />
     ) : (
       <div className="space-y-3">
         <div className="h-24 animate-pulse rounded-md bg-muted" />

@@ -19,6 +19,10 @@ The root page now provides a minimal analyst workspace surface for the core loop
 	- once chat starts, the suggestions section reduces to top suggestion with an option to expand
 	- handles no-suggestion backend responses with a graceful empty state
 - chat section now includes a lightweight analyst conversation panel for seeded/submitted questions
+	- modular transcript + composer layout with user and assistant message roles
+	- consumes backend `/chat/stream` SSE events (`meta`, `citations`, `token`, `done`, `error`)
+	- renders assistant tokens incrementally during streaming and supports cancel/abort
+	- final assistant message settles from structured `done` payload classification and answer text
 
 When URL ingestion is blocked or low-confidence, the ingestion panel provides inline CSV fallback guidance.
 

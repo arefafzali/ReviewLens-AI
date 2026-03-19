@@ -104,3 +104,49 @@ export type FastApiValidationIssue = {
 export type FastApiErrorResponse = {
   detail: string | FastApiValidationIssue[];
 };
+
+export type ChatClassification = "answer" | "out_of_scope" | "insufficient_evidence";
+
+export type ChatCitationItem = {
+  evidence_id: string;
+  review_id: string;
+  title?: string | null;
+  snippet: string;
+  author_name?: string | null;
+  reviewed_at?: string | null;
+  rating?: number | null;
+  rank: number;
+};
+
+export type ChatStreamRequestPayload = {
+  workspace_id: string;
+  product_id: string;
+  question: string;
+  chat_session_id?: string;
+};
+
+export type ChatStreamMetaEvent = {
+  chat_session_id: string;
+  provider: string;
+  history_message_count: number;
+};
+
+export type ChatStreamCitationsEvent = {
+  items: ChatCitationItem[];
+};
+
+export type ChatStreamTokenEvent = {
+  text: string;
+};
+
+export type ChatStreamDoneEvent = {
+  classification: ChatClassification;
+  chat_session_id: string;
+  citations: ChatCitationItem[];
+  answer: string;
+};
+
+export type ChatStreamErrorEvent = {
+  code: string;
+  message: string;
+};
