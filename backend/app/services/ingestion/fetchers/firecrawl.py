@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import html
-import json
 from typing import Any
 
 import httpx
 
+from app.llm.base import LLMProvider, LLMProviderError
 from app.services.ingestion.fetchers.base import FetchFailureCode, FetchResult, PublicUrlFetcher
 
 
@@ -20,19 +20,17 @@ class FirecrawlFetcher(PublicUrlFetcher):
         self,
         *,
         firecrawl_api_key: str | None,
-        openai_api_key: str | None,
-        openai_model: str,
+        llm_provider: LLMProvider | None,
+        llm_model: str,
         firecrawl_timeout_seconds: float = 45.0,
-        openai_timeout_seconds: float = 45.0,
         chunk_size_chars: int = 6000,
         chunk_overlap_chars: int = 800,
         max_chunks: int = 30,
     ) -> None:
         self._firecrawl_api_key = (firecrawl_api_key or "").strip()
-        self._openai_api_key = (openai_api_key or "").strip()
-        self._openai_model = openai_model.strip() or "gpt-4o-mini"
+        self._llm_provider = llm_provider
+        self._llm_model = llm_model.strip() or "gpt-4o-mini"
         self._firecrawl_timeout_seconds = firecrawl_timeout_seconds
-        self._openai_timeout_seconds = openai_timeout_seconds
         self._chunk_size_chars = max(500, chunk_size_chars)
         self._chunk_overlap_chars = max(0, chunk_overlap_chars)
         self._max_chunks = max(1, max_chunks)
@@ -40,8 +38,8 @@ class FirecrawlFetcher(PublicUrlFetcher):
     def fetch(self, target_url: str) -> FetchResult:
         if not self._firecrawl_api_key:
             return self._config_error(target_url, "FIRECRAWL_API_KEY is not configured.")
-        if not self._openai_api_key:
-            return self._config_error(target_url, "OPENAI_API_KEY is not configured.")
+        if self._llm_provider is None:
+            return self._config_error(target_url, "Configured LLM provider is not available.")
 
         scrape_response = self._firecrawl_scrape(target_url)
         if not scrape_response.ok:
@@ -64,7 +62,8 @@ class FirecrawlFetcher(PublicUrlFetcher):
                 "chunk_count": len(chunks),
                 "gpt_extracted_reviews": len(extracted_reviews),
                 "extracted_reviews": extracted_reviews,
-                "gpt_model": self._openai_model,
+                "gpt_model": self._llm_model,
+                "llm_provider": self._llm_provider.provider_name,
             }
         )
 
@@ -147,7 +146,7 @@ class FirecrawlFetcher(PublicUrlFetcher):
         collected: list[dict[str, Any]] = []
 
         for chunk in chunks[: self._max_chunks]:
-            reviews = self._extract_chunk_with_openai(target_url=target_url, chunk=chunk)
+            reviews = self._extract_chunk_with_llm(target_url=target_url, chunk=chunk)
             for review in reviews:
                 normalized = self._normalize_review(review)
                 body_key = (normalized.get("body") or "").strip().lower()
@@ -162,61 +161,30 @@ class FirecrawlFetcher(PublicUrlFetcher):
 
         return collected
 
-    def _extract_chunk_with_openai(self, *, target_url: str, chunk: str) -> list[dict[str, Any]]:
-        headers = {
-            "Authorization": f"Bearer {self._openai_api_key}",
-            "Content-Type": "application/json",
-        }
-
+    def _extract_chunk_with_llm(self, *, target_url: str, chunk: str) -> list[dict[str, Any]]:
         prompt = (
             "Extract user/customer review records from this markdown chunk. "
             "Return JSON only with this schema: {\"reviews\":[{\"title\":string|null,\"body\":string|null,\"rating\":number|string|null,\"author\":string|null,\"date\":string|null,\"url\":string|null}]}. "
             "Ignore marketing copy and navigation. Include only real review entries."
         )
 
-        payload = {
-            "model": self._openai_model,
-            "temperature": 0,
-            "response_format": {"type": "json_object"},
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "You are a precise data extraction assistant.",
-                },
-                {
-                    "role": "user",
-                    "content": f"URL: {target_url}\n\nMarkdown chunk:\n{chunk}",
-                },
-                {
-                    "role": "user",
-                    "content": prompt,
-                },
-            ],
-        }
+        if self._llm_provider is None:
+            return []
 
         try:
-            response = httpx.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers=headers,
-                json=payload,
-                timeout=self._openai_timeout_seconds,
+            generated = self._llm_provider.generate_structured(
+                system_prompt="You are a precise data extraction assistant.",
+                user_prompt=f"URL: {target_url}\n\nMarkdown chunk:\n{chunk}\n\n{prompt}",
+                model=self._llm_model,
+                temperature=0.0,
             )
-        except httpx.HTTPError:
+        except LLMProviderError:
             return []
 
-        if response.status_code >= 400:
+        if not isinstance(generated.payload, dict):
             return []
 
-        response_json = self._safe_json(response)
-        content = self._extract_message_content(response_json)
-        if not content:
-            return []
-
-        parsed = self._parse_json_text(content)
-        if not isinstance(parsed, dict):
-            return []
-
-        reviews = parsed.get("reviews")
+        reviews = generated.payload.get("reviews")
         if not isinstance(reviews, list):
             return []
 
@@ -291,52 +259,6 @@ class FirecrawlFetcher(PublicUrlFetcher):
             return ""
 
         return "<html><body><section id='gpt-extracted-reviews'>{}</section></body></html>".format("".join(cards))
-
-    def _extract_message_content(self, payload: Any) -> str | None:
-        if not isinstance(payload, dict):
-            return None
-
-        choices = payload.get("choices")
-        if not isinstance(choices, list) or not choices:
-            return None
-
-        message = choices[0].get("message") if isinstance(choices[0], dict) else None
-        if not isinstance(message, dict):
-            return None
-
-        content = message.get("content")
-        if isinstance(content, str):
-            return content.strip() or None
-
-        if isinstance(content, list):
-            text_parts: list[str] = []
-            for item in content:
-                if isinstance(item, dict) and item.get("type") == "text" and isinstance(item.get("text"), str):
-                    text_parts.append(item["text"])
-            joined = "\n".join(part.strip() for part in text_parts if part.strip())
-            return joined or None
-
-        return None
-
-    def _parse_json_text(self, text: str) -> Any:
-        raw = text.strip()
-        if raw.startswith("```"):
-            raw = raw.strip("`")
-            if raw.lower().startswith("json"):
-                raw = raw[4:].strip()
-
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError:
-            start = raw.find("{")
-            end = raw.rfind("}")
-            if start >= 0 and end > start:
-                candidate = raw[start : end + 1]
-                try:
-                    return json.loads(candidate)
-                except json.JSONDecodeError:
-                    return None
-            return None
 
     def _first_text(self, payload: dict[str, Any], keys: list[str]) -> str | None:
         for key in keys:

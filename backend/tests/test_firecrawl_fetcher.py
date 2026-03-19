@@ -4,26 +4,12 @@ from __future__ import annotations
 
 import httpx
 
+from app.llm.fake_provider import FakeLLMProvider
 from app.services.ingestion.fetchers.firecrawl import FirecrawlFetcher
 
 
 def test_firecrawl_fetch_success(monkeypatch) -> None:
     def fake_post(url, headers=None, json=None, timeout=None):
-        if url.endswith("/v1/chat/completions"):
-            return httpx.Response(
-                status_code=200,
-                json={
-                    "choices": [
-                        {
-                            "message": {
-                                "content": '{"reviews":[{"title":"Solid product","body":"Very useful for our workflow","rating":4.0,"author":"Riya","date":"2026-03-01","url":"https://example.com/r/1"}]}'
-                            }
-                        }
-                    ]
-                },
-                request=httpx.Request("POST", url),
-            )
-
         return httpx.Response(
             status_code=200,
             json={
@@ -39,10 +25,25 @@ def test_firecrawl_fetch_success(monkeypatch) -> None:
 
     monkeypatch.setattr("app.services.ingestion.fetchers.firecrawl.httpx.post", fake_post)
 
+    llm_provider = FakeLLMProvider(
+        structured_response={
+            "reviews": [
+                {
+                    "title": "Solid product",
+                    "body": "Very useful for our workflow",
+                    "rating": 4.0,
+                    "author": "Riya",
+                    "date": "2026-03-01",
+                    "url": "https://example.com/r/1",
+                }
+            ]
+        }
+    )
+
     fetcher = FirecrawlFetcher(
         firecrawl_api_key="firecrawl-key",
-        openai_api_key="openai-key",
-        openai_model="gpt-4o-mini",
+        llm_provider=llm_provider,
+        llm_model="gpt-4o-mini",
     )
     result = fetcher.fetch("https://example.com/reviews")
 
@@ -55,10 +56,11 @@ def test_firecrawl_fetch_success(monkeypatch) -> None:
 
 
 def test_firecrawl_fetch_config_error_without_api_key() -> None:
+    llm_provider = FakeLLMProvider()
     fetcher = FirecrawlFetcher(
         firecrawl_api_key=None,
-        openai_api_key="openai-key",
-        openai_model="gpt-4o-mini",
+        llm_provider=llm_provider,
+        llm_model="gpt-4o-mini",
     )
     result = fetcher.fetch("https://example.com/reviews")
 
@@ -67,17 +69,17 @@ def test_firecrawl_fetch_config_error_without_api_key() -> None:
     assert "firecrawl_api_key" in (result.error_detail or "").lower()
 
 
-def test_firecrawl_fetch_config_error_without_openai_key() -> None:
+def test_firecrawl_fetch_config_error_without_llm_provider() -> None:
     fetcher = FirecrawlFetcher(
         firecrawl_api_key="firecrawl-key",
-        openai_api_key=None,
-        openai_model="gpt-4o-mini",
+        llm_provider=None,
+        llm_model="gpt-4o-mini",
     )
     result = fetcher.fetch("https://example.com/reviews")
 
     assert result.ok is False
     assert result.error_code.value == "config_error"
-    assert "openai_api_key" in (result.error_detail or "").lower()
+    assert "llm provider" in (result.error_detail or "").lower()
 
 
 def test_firecrawl_fetch_surfaces_upstream_error(monkeypatch) -> None:
@@ -92,8 +94,8 @@ def test_firecrawl_fetch_surfaces_upstream_error(monkeypatch) -> None:
 
     fetcher = FirecrawlFetcher(
         firecrawl_api_key="firecrawl-key",
-        openai_api_key="openai-key",
-        openai_model="gpt-4o-mini",
+        llm_provider=FakeLLMProvider(),
+        llm_model="gpt-4o-mini",
     )
     result = fetcher.fetch("https://example.com/reviews")
 

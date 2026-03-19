@@ -73,7 +73,7 @@ class ReviewRetrievalService:
         query: str,
         limit: int,
     ) -> list[RetrievedReview]:
-        sql = text(
+        strict_sql = text(
             """
             SELECT
                 r.id,
@@ -97,7 +97,7 @@ class ReviewRetrievalService:
         )
 
         rows = self._db.execute(
-            sql,
+            strict_sql,
             {
                 "workspace_id": workspace_id,
                 "product_id": product_id,
@@ -106,19 +106,56 @@ class ReviewRetrievalService:
             },
         ).mappings()
 
-        return [
-            RetrievedReview(
-                review_id=row["id"],
-                title=row["title"],
-                body=row["body"],
-                rating=float(row["rating"]) if row["rating"] is not None else None,
-                author_name=row["author_name"],
-                reviewed_at=row["reviewed_at"],
-                rank=float(row["rank"]),
-                snippet=row["snippet"],
-            )
-            for row in rows
-        ]
+        materialized_rows = list(rows)
+        if materialized_rows:
+            return [_row_to_retrieved_review(row) for row in materialized_rows]
+
+        relaxed_or_query = _build_relaxed_or_tsquery(query)
+        if not relaxed_or_query:
+            return []
+
+        relaxed_sql = text(
+            """
+            SELECT
+                r.id,
+                r.title,
+                r.body,
+                r.rating,
+                r.author_name,
+                r.reviewed_at,
+                ts_rank_cd(
+                    r.search_vector,
+                    to_tsquery('english', :or_query)
+                ) AS rank,
+                LEFT(r.body, 280) AS snippet
+            FROM reviews AS r
+            WHERE r.workspace_id = :workspace_id
+              AND r.product_id = :product_id
+              AND r.search_vector @@ to_tsquery('english', :or_query)
+            ORDER BY rank DESC, r.reviewed_at DESC NULLS LAST, r.created_at DESC
+            LIMIT :limit
+            """
+        )
+
+        relaxed_rows = self._db.execute(
+            relaxed_sql,
+            {
+                "workspace_id": workspace_id,
+                "product_id": product_id,
+                "or_query": relaxed_or_query,
+                "limit": limit,
+            },
+        ).mappings()
+
+        relaxed_materialized = list(relaxed_rows)
+        if relaxed_materialized:
+            return [_row_to_retrieved_review(row) for row in relaxed_materialized]
+
+        return self._retrieve_recent_product_reviews(
+            workspace_id=workspace_id,
+            product_id=product_id,
+            limit=limit,
+        )
 
     def _retrieve_fallback(
         self,
@@ -171,7 +208,46 @@ class ReviewRetrievalService:
                     snippet=record.body[:280],
                 )
             )
-        return output
+        if output:
+            return output
+
+        return self._retrieve_recent_product_reviews(
+            workspace_id=workspace_id,
+            product_id=product_id,
+            limit=limit,
+        )
+
+    def _retrieve_recent_product_reviews(
+        self,
+        *,
+        workspace_id: UUID,
+        product_id: UUID,
+        limit: int,
+    ) -> list[RetrievedReview]:
+        records = (
+            self._db.query(Review)
+            .filter(
+                Review.workspace_id == workspace_id,
+                Review.product_id == product_id,
+            )
+            .order_by(Review.reviewed_at.desc().nullslast(), Review.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+
+        return [
+            RetrievedReview(
+                review_id=record.id,
+                title=record.title,
+                body=record.body,
+                rating=float(record.rating) if record.rating is not None else None,
+                author_name=record.author_name,
+                reviewed_at=record.reviewed_at,
+                rank=0.1,
+                snippet=record.body[:280],
+            )
+            for record in records
+        ]
 
 
 def _extract_quoted_phrases(query: str) -> list[str]:
@@ -181,6 +257,45 @@ def _extract_quoted_phrases(query: str) -> list[str]:
 def _extract_keywords(query: str) -> list[str]:
     text_without_quotes = re.sub(r'"[^"]+"', " ", query.lower())
     return [token for token in re.findall(r"[a-z0-9]{2,}", text_without_quotes)]
+
+
+def _build_relaxed_or_tsquery(query: str, *, max_terms: int = 8) -> str | None:
+    """Build a safe OR tsquery from keyword tokens for retrieval fallback.
+
+    Example output: "support:* | onboarding:* | team:*"
+    """
+
+    keywords = _extract_keywords(query)
+    if not keywords:
+        return None
+
+    seen: set[str] = set()
+    terms: list[str] = []
+    for token in keywords:
+        normalized = token.strip().lower()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        terms.append(f"{normalized}:*")
+        if len(terms) >= max_terms:
+            break
+
+    if not terms:
+        return None
+    return " | ".join(terms)
+
+
+def _row_to_retrieved_review(row) -> RetrievedReview:
+    return RetrievedReview(
+        review_id=row["id"],
+        title=row["title"],
+        body=row["body"],
+        rating=float(row["rating"]) if row["rating"] is not None else None,
+        author_name=row["author_name"],
+        reviewed_at=row["reviewed_at"],
+        rank=float(row["rank"]),
+        snippet=row["snippet"],
+    )
 
 
 def _fallback_score(*, record: Review, phrase_tokens: list[str], keyword_tokens: list[str]) -> float:

@@ -48,6 +48,16 @@ class Settings(BaseSettings):
         le=120.0,
         description="Timeout for Firecrawl API requests.",
     )
+    llm_provider: Literal["openai", "fake"] = Field(
+        default="openai",
+        validation_alias=AliasChoices("REVIEWLENS_LLM_PROVIDER"),
+        description="Configured LLM provider adapter for chat and structured generation.",
+    )
+    llm_fake_structured_response: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("REVIEWLENS_LLM_FAKE_STRUCTURED_RESPONSE"),
+        description="Optional deterministic JSON payload used by the fake LLM provider.",
+    )
     openai_api_key: str | None = Field(
         default=None,
         validation_alias=AliasChoices("REVIEWLENS_OPENAI_API_KEY", "OPENAI_API_KEY"),

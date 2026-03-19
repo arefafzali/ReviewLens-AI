@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.db.base import Base
 from app.db.models import Product, Review, Workspace
-from app.services.retrieval_service import ReviewRetrievalService
+from app.services.retrieval_service import ReviewRetrievalService, _build_relaxed_or_tsquery
 
 
 def _setup_db() -> Session:
@@ -156,3 +156,58 @@ def test_retrieval_empty_query_returns_empty_list() -> None:
     )
 
     assert results == []
+
+
+def test_retrieval_returns_recent_reviews_for_broad_query_without_keyword_hits() -> None:
+    db = _setup_db()
+    workspace_id, product_a, _ = _seed_workspace_and_products(db)
+
+    db.add_all(
+        [
+            Review(
+                workspace_id=workspace_id,
+                product_id=product_a,
+                source_platform="generic",
+                review_fingerprint="broad1",
+                title="Great experience",
+                body="Helpful team and easy setup.",
+                rating=5.0,
+                reviewed_at=date(2026, 3, 3),
+            ),
+            Review(
+                workspace_id=workspace_id,
+                product_id=product_a,
+                source_platform="generic",
+                review_fingerprint="broad2",
+                title="Useful platform",
+                body="Strong newsroom workflow capabilities.",
+                rating=4.0,
+                reviewed_at=date(2026, 3, 1),
+            ),
+        ]
+    )
+    db.commit()
+
+    service = ReviewRetrievalService(db)
+    results = service.retrieve_top_reviews(
+        workspace_id=workspace_id,
+        product_id=product_a,
+        query="which themes are most consistent across reviews",
+        limit=5,
+    )
+
+    assert len(results) == 2
+    assert results[0].rank == 0.1
+    assert results[0].reviewed_at == date(2026, 3, 3)
+
+
+def test_relaxed_or_tsquery_builder_dedupes_and_caps_terms() -> None:
+    query = "Support onboarding team team easy easy support analytics workflow reliability pricing"
+
+    tsquery = _build_relaxed_or_tsquery(query, max_terms=5)
+
+    assert tsquery == "support:* | onboarding:* | team:* | easy:* | analytics:*"
+
+
+def test_relaxed_or_tsquery_builder_returns_none_without_keywords() -> None:
+    assert _build_relaxed_or_tsquery('"" ""', max_terms=5) is None

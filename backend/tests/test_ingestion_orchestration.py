@@ -464,3 +464,27 @@ Reporting needs improvement,2,Ana,2026-03-02
     ]
     assert run.summary_snapshot["suggested_questions"] == expected
     assert product.stats["suggested_questions"] == expected
+
+
+def test_url_ingestion_invalid_llm_provider_config_is_modeled(monkeypatch) -> None:
+    db = _setup_db()
+    workspace_id, product_id = _seed_workspace_and_product(db)
+    service = IngestionOrchestrationService(IngestionRunRepository(db))
+
+    monkeypatch.setattr(
+        "app.services.ingestion_service.build_llm_provider",
+        lambda *_: (_ for _ in ()).throw(ValueError("Unsupported LLM provider: unknown")),
+    )
+
+    result = service.attempt_url_ingestion(
+        URLIngestionRequest(
+            workspace_id=workspace_id,
+            product_id=product_id,
+            target_url=CAPTERRA_PRESSPAGE_REVIEWS_URL,
+        )
+    )
+
+    assert result.status == IngestionRunStatus.FAILED
+    assert result.outcome_code == IngestionOutcomeCode.PARSE_FAILED
+    assert result.message == "Configured LLM provider is invalid."
+    assert result.diagnostics["failure_stage"] == "llm_provider_config"

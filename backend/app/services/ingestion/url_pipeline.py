@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlparse
 
+from app.llm.base import LLMProvider
 from app.schemas.ingestion import IngestionOutcomeCode, IngestionRunStatus
 from app.services.ingestion.fetchers.base import FetchFailureCode, PublicUrlFetcher
 from app.services.ingestion.fetchers.firecrawl import FirecrawlFetcher
@@ -41,20 +42,18 @@ class URLIngestionPipeline:
         cls,
         *,
         firecrawl_api_key: str | None,
-        openai_api_key: str | None,
-        openai_model: str,
+        llm_provider: LLMProvider | None,
+        llm_model: str,
         firecrawl_timeout_seconds: float,
-        openai_timeout_seconds: float,
         chunk_size_chars: int,
         chunk_overlap_chars: int,
         max_chunks: int,
     ) -> "URLIngestionPipeline":
         fetcher = FirecrawlFetcher(
             firecrawl_api_key=firecrawl_api_key,
-            openai_api_key=openai_api_key,
-            openai_model=openai_model,
+            llm_provider=llm_provider,
+            llm_model=llm_model,
             firecrawl_timeout_seconds=firecrawl_timeout_seconds,
-            openai_timeout_seconds=openai_timeout_seconds,
             chunk_size_chars=chunk_size_chars,
             chunk_overlap_chars=chunk_overlap_chars,
             max_chunks=max_chunks,

@@ -8,7 +8,7 @@ Minimal FastAPI scaffold for the ReviewLens AI backend.
 - Environment variable `REVIEWLENS_ENVIRONMENT` must be set (for example: `local`, `development`, `staging`, `production`, `test`).
 - Environment variable `DATABASE_URL` must be set to a Postgres URL for online migrations.
 - Environment variable `FIRECRAWL_API_KEY` must be set for URL ingestion fetches.
-- Environment variable `OPENAI_API_KEY` must be set for markdown chunk review extraction.
+- Environment variable `OPENAI_API_KEY` must be set when `REVIEWLENS_LLM_PROVIDER=openai`.
 
 ## Install
 
@@ -51,6 +51,7 @@ docker compose up --build backend db
 - `POST /context/ensure`
 - `POST /ingestion/url`
 - `POST /ingestion/csv`
+- `POST /chat/stream` (SSE)
 
 `POST /context/ensure` is an idempotent bootstrap endpoint used by the frontend
 to ensure `workspace_id` and `product_id` records exist before ingestion calls.
@@ -100,8 +101,47 @@ URL ingestion architecture:
 - Firecrawl is the only active fetch provider
 - Firecrawl fetches page markdown and HTML
 - Markdown is split into overlapping chunks
-- Each chunk is sent to GPT for structured review extraction
+- Each chunk is sent through the provider-agnostic LLM interface for structured review extraction
 - Extracted reviews are merged, deduplicated, and used as the ingestion capture result
+
+LLM provider architecture:
+
+- `app/llm/base.py` defines a common contract for chat, structured generation, and streaming chunks
+- `app/llm/factory.py` selects provider adapters via `REVIEWLENS_LLM_PROVIDER`
+- `app/llm/openai_provider.py` is the production adapter for OpenAI chat completions
+- `app/llm/fake_provider.py` is a deterministic adapter for tests and local simulation
+
+Guardrailed Q&A prompt architecture:
+
+- `app/services/chat/prompt_builder.py` builds deterministic system/user prompts from product identity, ingestion context, and retrieved review evidence
+- The system prompt contains explicit scope guard, refusal behavior, and insufficient-evidence behavior
+- Scope enforcement is prompt-first (assignment requirement), without a heavyweight deterministic policy engine
+
+Conversation memory architecture:
+
+- `app/repositories/chat_memory.py` persists chat sessions and messages scoped to workspace/product
+- `app/services/chat/conversation_memory.py` provides session lookup/creation and bounded history loading
+- Recent context window is capped to the last 6 turns (12 messages) to keep prompts bounded
+
+Streaming chat contract:
+
+- Endpoint: `POST /chat/stream`
+- Request: `workspace_id`, `product_id`, `question`, optional `chat_session_id`
+- Server workflow per request:
+	1. load recent bounded conversation history
+	2. retrieve product-scoped review evidence
+	3. build scope-guarded prompt
+	4. stream model output tokens
+- SSE events emitted:
+	- `meta`: session/provider/context metadata
+	- `citations`: machine-readable evidence payload
+	- `token`: incremental answer text deltas
+	- `done`: final answer with normalized classification and citations
+	- `error`: structured stream error payload
+- Final classification values:
+	- `answer`
+	- `out_of_scope`
+	- `insufficient_evidence`
 
 SSRF-safe validation is applied for URL ingestion fetch targets:
 
@@ -115,6 +155,8 @@ explaining what was captured.
 Optional local tuning:
 
 - `REVIEWLENS_FIRECRAWL_TIMEOUT_SECONDS` controls Firecrawl API timeout.
+- `REVIEWLENS_LLM_PROVIDER` selects `openai` or `fake` provider adapter.
+- `REVIEWLENS_LLM_FAKE_STRUCTURED_RESPONSE` supplies deterministic JSON payload for fake provider tests.
 - `REVIEWLENS_OPENAI_MODEL` selects the extraction model.
 - `REVIEWLENS_OPENAI_TIMEOUT_SECONDS` controls extraction request timeout.
 - `REVIEWLENS_MARKDOWN_CHUNK_SIZE_CHARS`, `REVIEWLENS_MARKDOWN_CHUNK_OVERLAP_CHARS`, and `REVIEWLENS_MARKDOWN_MAX_CHUNKS` tune chunking behavior.

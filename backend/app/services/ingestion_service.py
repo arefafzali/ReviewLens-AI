@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy.exc import IntegrityError
 
 from app.config import get_settings
+from app.llm.factory import build_llm_provider
 from app.repositories.ingestion_runs import IngestionRunRepository
 from app.schemas.ingestion import (
     CSVIngestionRequest,
@@ -242,12 +243,28 @@ class IngestionOrchestrationService:
 
     def _evaluate_url(self, target_url: str) -> EvaluationResult:
         settings = get_settings()
+        try:
+            llm_provider = build_llm_provider(settings)
+        except ValueError as exc:
+            return EvaluationResult(
+                status=IngestionRunStatus.FAILED,
+                outcome_code=IngestionOutcomeCode.PARSE_FAILED,
+                captured_reviews=0,
+                message="Configured LLM provider is invalid.",
+                warnings=[],
+                error_detail=str(exc),
+                diagnostics={
+                    "failure_stage": "llm_provider_config",
+                    "provider": settings.llm_provider,
+                    "requested_url": target_url,
+                },
+                extracted_reviews=[],
+            )
         pipeline = URLIngestionPipeline.with_firecrawl(
             firecrawl_api_key=settings.firecrawl_api_key,
-            openai_api_key=settings.openai_api_key,
-            openai_model=settings.openai_model,
+            llm_provider=llm_provider,
+            llm_model=settings.openai_model,
             firecrawl_timeout_seconds=settings.firecrawl_timeout_seconds,
-            openai_timeout_seconds=settings.openai_timeout_seconds,
             chunk_size_chars=settings.markdown_chunk_size_chars,
             chunk_overlap_chars=settings.markdown_chunk_overlap_chars,
             max_chunks=settings.markdown_max_chunks,

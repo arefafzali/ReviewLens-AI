@@ -19,4 +19,8 @@ OPENAPI_TAGS = [
         "name": "ingestion",
         "description": "Ingestion orchestration APIs for URL and CSV ingestion attempts.",
     },
+    {
+        "name": "chat",
+        "description": "Guardrailed chat APIs for product-scoped streaming analysis.",
+    },
 ]
