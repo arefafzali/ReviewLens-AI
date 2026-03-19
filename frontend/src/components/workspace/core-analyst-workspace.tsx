@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import {
@@ -10,8 +10,13 @@ import {
   createUserChatMessage,
   type ChatMessage,
 } from "@/components/workspace/analyst-chat-panel";
+import { ApiClientError, apiClient } from "@/lib/api";
 import { ChatStreamTransportError, streamChatCompletion } from "@/lib/chat-stream";
-import { getWorkspaceContextIds } from "@/lib/workspace-context";
+import {
+  getStoredChatSessionId,
+  getWorkspaceContextIds,
+  setStoredChatSessionId,
+} from "@/lib/workspace-context";
 import { IngestionPanel } from "@/components/workspace/ingestion-panel";
 import { IngestionSummaryDashboard } from "@/components/workspace/ingestion-summary-dashboard";
 import { SuggestedQuestions } from "@/components/workspace/suggested-questions";
@@ -26,6 +31,26 @@ type WorkspaceSection = {
   status: SectionStatus;
   placeholder: ReactNode;
 };
+
+function parseClassification(value: unknown): ChatMessage["finalClassification"] | undefined {
+  if (value === "answer" || value === "out_of_scope" || value === "insufficient_evidence") {
+    return value;
+  }
+  return undefined;
+}
+
+function parseCitations(value: unknown): ChatCitationItem[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((item): item is ChatCitationItem => Boolean(item && typeof item === "object" && "evidence_id" in item && "snippet" in item))
+    .map((item) => ({
+      ...item,
+      rank: typeof item.rank === "number" ? item.rank : 0,
+    }));
+}
 
 function SectionStatusBadge({ status }: { status: SectionStatus }): ReactNode {
   if (status === "ready") {
@@ -67,9 +92,65 @@ export function CoreAnalystWorkspace(): ReactNode {
   const [chatSessionId, setChatSessionId] = useState<string | null>(null);
 
   const activeStreamControllerRef = useRef<AbortController | null>(null);
+  const historyHydratedRef = useRef(false);
 
   const suggestedQuestions = latestIngestion?.summary_snapshot?.suggested_questions ?? [];
   const hasConversationStarted = chatMessages.length > 0;
+
+  useEffect(() => {
+    if (historyHydratedRef.current) {
+      return;
+    }
+    historyHydratedRef.current = true;
+
+    let canceled = false;
+    const { workspaceId, productId } = getWorkspaceContextIds();
+    const storedSessionId = getStoredChatSessionId(workspaceId, productId) ?? undefined;
+
+    void apiClient
+      .getChatHistory(workspaceId, productId, storedSessionId)
+      .then((history) => {
+        if (canceled) {
+          return;
+        }
+
+        setChatSessionId(history.chat_session_id);
+        setStoredChatSessionId(workspaceId, productId, history.chat_session_id);
+
+        setChatMessages((previous) => {
+          if (previous.length > 0) {
+            return previous;
+          }
+
+          return history.messages.map((item) => {
+            const metadata = item.metadata ?? {};
+            return {
+              id: `persisted-${history.chat_session_id}-${item.message_index}`,
+              role: item.role,
+              content: item.content,
+              state: "complete",
+              finalClassification:
+                parseClassification((metadata as Record<string, unknown>).classification) ??
+                (item.is_refusal ? "out_of_scope" : undefined),
+              citations: parseCitations((metadata as Record<string, unknown>).citations),
+            };
+          });
+        });
+      })
+      .catch((error: unknown) => {
+        if (canceled) {
+          return;
+        }
+
+        if (error instanceof ApiClientError && error.status === 404) {
+          return;
+        }
+      });
+
+    return () => {
+      canceled = true;
+    };
+  }, []);
 
   const appendTokenToMessage = useCallback((messageId: string, token: string) => {
     setChatMessages((previous) =>
@@ -99,6 +180,7 @@ export function CoreAnalystWorkspace(): ReactNode {
             content: payload.content,
             state: "complete",
             finalClassification: payload.classification,
+            citations: payload.citations ?? [],
           };
         }),
       );
@@ -133,12 +215,14 @@ export function CoreAnalystWorkspace(): ReactNode {
         signal: controller.signal,
         onMeta: (meta) => {
           setChatSessionId(meta.chat_session_id);
+          setStoredChatSessionId(workspaceId, productId, meta.chat_session_id);
         },
         onToken: ({ text }) => {
           appendTokenToMessage(assistantMessageId, text);
         },
         onDone: (payload) => {
           setChatSessionId(payload.chat_session_id);
+          setStoredChatSessionId(workspaceId, productId, payload.chat_session_id);
           finalizeAssistantMessage(assistantMessageId, {
             content: payload.answer,
             citations: payload.citations,
@@ -224,8 +308,8 @@ export function CoreAnalystWorkspace(): ReactNode {
     id: "analyst-chat",
     title: "Analyst Chat",
     description: "Host scoped multi-turn Q&A with source-grounded answers from ingested reviews.",
-    status: latestIngestion ? "ready" : "loading",
-    placeholder: latestIngestion ? (
+    status: latestIngestion || chatMessages.length > 0 ? "ready" : "loading",
+    placeholder: latestIngestion || chatMessages.length > 0 ? (
       <AnalystChatPanel
         messages={chatMessages}
         onSubmitQuestion={appendQuestionToChat}

@@ -3,22 +3,62 @@
 from __future__ import annotations
 
 from collections.abc import Generator
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db.session import get_db_session
 from app.llm.factory import build_llm_provider
-from app.schemas.chat import ChatStreamRequest
+from app.schemas.chat import ChatHistoryResponse, ChatStreamRequest, PersistedChatMessage
 from app.services.chat.chat_stream_service import (
     ChatStreamService,
     classify_response,
     format_sse_event,
 )
+from app.services.chat.conversation_memory import ConversationMemoryService
 
 router = APIRouter(prefix="/chat")
+
+
+@router.get(
+    "/history",
+    response_model=ChatHistoryResponse,
+    summary="Load recent persisted chat history",
+    description="Returns a bounded recent conversation window for a given workspace/product and optional session id.",
+)
+def get_chat_history(
+    workspace_id: UUID,
+    product_id: UUID,
+    chat_session_id: UUID | None = None,
+    max_turns: int = Query(default=6, ge=1, le=20),
+    db: Session = Depends(get_db_session),
+) -> ChatHistoryResponse:
+    memory = ConversationMemoryService(db)
+    history = memory.get_recent_history(
+        workspace_id=workspace_id,
+        product_id=product_id,
+        session_id=chat_session_id,
+        max_turns=max_turns,
+    )
+    if history is None:
+        raise HTTPException(status_code=404, detail="No chat history found for this workspace/product context.")
+
+    return ChatHistoryResponse(
+        chat_session_id=history.session_id,
+        messages=[
+            PersistedChatMessage(
+                message_index=item.message_index,
+                role=item.role,
+                content=item.content,
+                is_refusal=item.is_refusal,
+                metadata=item.metadata,
+            )
+            for item in history.messages
+        ],
+    )
 
 
 @router.post(

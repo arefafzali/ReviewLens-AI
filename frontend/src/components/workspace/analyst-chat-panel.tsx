@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
+import type { ChatCitationItem } from "@/types/api";
 
 export type ChatMessageRole = "user" | "assistant";
 export type ChatMessageState = "complete" | "streaming";
@@ -13,6 +14,7 @@ export type ChatMessage = {
   content: string;
   state?: ChatMessageState;
   finalClassification?: ChatFinalClassification;
+  citations?: ChatCitationItem[];
 };
 
 type AnalystChatPanelProps = {
@@ -91,6 +93,55 @@ function classificationPresentation(
   return null;
 }
 
+function formatCitationRating(value: number | null | undefined): string | null {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return null;
+  }
+  return `${value.toFixed(1)} / 5`;
+}
+
+function CitationList({ citations }: { citations: ChatCitationItem[] }): ReactNode {
+  if (citations.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="mt-3 space-y-2" aria-label="Supporting review evidence">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        Supporting review evidence
+      </p>
+      <ul className="space-y-2">
+        {citations.slice(0, 3).map((citation) => {
+          const rating = formatCitationRating(citation.rating);
+          const hasMeta = Boolean(citation.reviewed_at || rating || citation.author_name);
+          return (
+            <li key={`${citation.evidence_id}-${citation.review_id}`} className="rounded-md border border-border/70 bg-background/60 p-2">
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                  {citation.evidence_id}
+                </span>
+                {citation.title ? (
+                  <span className="truncate text-[11px] text-muted-foreground" title={citation.title}>
+                    {citation.title}
+                  </span>
+                ) : null}
+              </div>
+              <p className="text-xs text-foreground whitespace-pre-wrap">&quot;{citation.snippet}&quot;</p>
+              {hasMeta ? (
+                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                  {citation.author_name ? <span>{citation.author_name}</span> : null}
+                  {citation.reviewed_at ? <span>{citation.reviewed_at}</span> : null}
+                  {rating ? <span>{rating}</span> : null}
+                </div>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 function ChatMessageList({ messages, isResponding }: { messages: ChatMessage[]; isResponding: boolean }): ReactNode {
   const endOfListRef = useRef<HTMLDivElement | null>(null);
 
@@ -141,6 +192,9 @@ function ChatMessageList({ messages, isResponding }: { messages: ChatMessage[]; 
               <p className="mt-2 text-xs text-muted-foreground" aria-label="Classification guidance">
                 {presentation.guidance}
               </p>
+            ) : null}
+            {!isUser && message.state !== "streaming" && Array.isArray(message.citations) ? (
+              <CitationList citations={message.citations} />
             ) : null}
             {message.state === "streaming" ? (
               <p className="mt-1 text-[11px] text-muted-foreground" aria-label="Message streaming state">

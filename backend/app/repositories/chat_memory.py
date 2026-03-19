@@ -22,6 +22,7 @@ class ChatWindowMessage:
     content: str
     is_refusal: bool
     created_at: datetime
+    message_metadata: dict[str, Any]
 
 
 class ChatMemoryRepository:
@@ -120,6 +121,39 @@ class ChatMemoryRepository:
         )
         return user_saved, assistant_saved
 
+    def get_latest_session(
+        self,
+        *,
+        workspace_id: UUID,
+        product_id: UUID,
+    ) -> ChatSession | None:
+        return (
+            self._db.query(ChatSession)
+            .filter(
+                ChatSession.workspace_id == workspace_id,
+                ChatSession.product_id == product_id,
+            )
+            .order_by(ChatSession.last_activity_at.desc(), ChatSession.created_at.desc())
+            .first()
+        )
+
+    def get_session(
+        self,
+        *,
+        workspace_id: UUID,
+        product_id: UUID,
+        session_id: UUID,
+    ) -> ChatSession | None:
+        return (
+            self._db.query(ChatSession)
+            .filter(
+                ChatSession.id == session_id,
+                ChatSession.workspace_id == workspace_id,
+                ChatSession.product_id == product_id,
+            )
+            .first()
+        )
+
     def load_recent_window(
         self,
         *,
@@ -150,6 +184,7 @@ class ChatMemoryRepository:
                 content=item.content,
                 is_refusal=bool(item.is_refusal),
                 created_at=item.created_at,
+                message_metadata=dict(item.message_metadata or {}),
             )
             for item in rows
         ]

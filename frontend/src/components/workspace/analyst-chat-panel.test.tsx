@@ -95,6 +95,72 @@ describe("AnalystChatPanel", () => {
     expect(screen.getByText(/not enough evidence found in the ingested reviews/i)).toBeInTheDocument();
   });
 
+  it("renders supporting citations with helpful metadata", () => {
+    render(
+      <AnalystChatPanel
+        onSubmitQuestion={vi.fn()}
+        messages={[
+          {
+            id: "m4",
+            role: "assistant",
+            content: "Support quality and ease of publishing are repeated strengths.",
+            state: "complete",
+            finalClassification: "answer",
+            citations: [
+              {
+                evidence_id: "E1",
+                review_id: "r1",
+                title: "Great support",
+                snippet: "The support team was very responsive and patient.",
+                author_name: "Alex",
+                reviewed_at: "2020-06-30",
+                rating: 5,
+                rank: 0.93,
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByLabelText(/supporting review evidence/i)).toBeInTheDocument();
+    expect(screen.getByText("E1")).toBeInTheDocument();
+    expect(screen.getByText(/the support team was very responsive and patient/i)).toBeInTheDocument();
+    expect(screen.getByText("Alex")).toBeInTheDocument();
+    expect(screen.getByText("2020-06-30")).toBeInTheDocument();
+    expect(screen.getByText("5.0 / 5")).toBeInTheDocument();
+  });
+
+  it("handles sparse citation metadata safely", () => {
+    render(
+      <AnalystChatPanel
+        onSubmitQuestion={vi.fn()}
+        messages={[
+          {
+            id: "m5",
+            role: "assistant",
+            content: "Evidence is limited but available.",
+            state: "complete",
+            finalClassification: "insufficient_evidence",
+            citations: [
+              {
+                evidence_id: "E2",
+                review_id: "r2",
+                snippet: "Users mention onboarding was simple.",
+                rank: 0.51,
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("E2")).toBeInTheDocument();
+    expect(screen.getByText(/users mention onboarding was simple/i)).toBeInTheDocument();
+    expect(screen.queryByText("undefined")).not.toBeInTheDocument();
+    expect(screen.queryByText("null")).not.toBeInTheDocument();
+  });
+
   it("shows loading state and disables composer while responding", () => {
     const onCancelResponse = vi.fn();
     render(

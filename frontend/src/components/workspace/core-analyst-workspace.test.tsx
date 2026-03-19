@@ -1,7 +1,7 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-import { apiClient } from "@/lib/api";
+import { ApiClientError, apiClient } from "@/lib/api";
 import { ChatStreamTransportError, streamChatCompletion } from "@/lib/chat-stream";
 
 import { CoreAnalystWorkspace } from "./core-analyst-workspace";
@@ -14,6 +14,7 @@ vi.mock("@/lib/api", async () => {
       postEnsureContext: vi.fn(),
       postUrlIngestion: vi.fn(),
       postCsvIngestion: vi.fn(),
+      getChatHistory: vi.fn(),
     },
   };
 });
@@ -72,6 +73,57 @@ describe("CoreAnalystWorkspace", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSuccessfulIngestion();
+    vi.mocked(apiClient.getChatHistory).mockRejectedValue(
+      new ApiClientError("No chat history found.", 404),
+    );
+  });
+
+  it("hydrates persisted chat history on workspace re-entry without duplicates", async () => {
+    vi.mocked(apiClient.getChatHistory).mockResolvedValueOnce({
+      chat_session_id: "session-h1",
+      messages: [
+        {
+          message_index: 1,
+          role: "user",
+          content: "What are common strengths?",
+          is_refusal: false,
+          metadata: {},
+        },
+        {
+          message_index: 2,
+          role: "assistant",
+          content: "Support responsiveness and ease of use are common strengths.",
+          is_refusal: false,
+          metadata: {
+            classification: "answer",
+            citations: [
+              {
+                evidence_id: "E1",
+                review_id: "review-1",
+                snippet: "Support was responsive and onboarding was simple.",
+                rank: 0.93,
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    render(<CoreAnalystWorkspace />);
+
+    expect(await screen.findByText("What are common strengths?")).toBeInTheDocument();
+    expect(await screen.findByText("Support responsiveness and ease of use are common strengths.")).toBeInTheDocument();
+    expect(await screen.findByText("E1")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Analyst Chat" })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/review page url/i), {
+      target: { value: "https://www.g2.com/products/example/reviews" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run URL Ingestion" }));
+    await screen.findByText("run-456");
+
+    expect(screen.getAllByText("What are common strengths?")).toHaveLength(1);
+    expect(vi.mocked(apiClient.getChatHistory)).toHaveBeenCalledTimes(1);
   });
 
   it("updates ingestion summary section and streams assistant response", async () => {
@@ -86,13 +138,35 @@ describe("CoreAnalystWorkspace", () => {
       onDone?.({
         classification: "answer",
         chat_session_id: "session-1",
-        citations: [],
+        citations: [
+          {
+            evidence_id: "E1",
+            review_id: "review-1",
+            title: "Fast onboarding",
+            snippet: "Onboarding was fast and support was helpful.",
+            author_name: "Ari",
+            reviewed_at: "2026-03-10",
+            rating: 4.8,
+            rank: 0.95,
+          },
+        ],
         answer: "Question queued for analysis.",
       });
       return {
         classification: "answer",
         chat_session_id: "session-1",
-        citations: [],
+        citations: [
+          {
+            evidence_id: "E1",
+            review_id: "review-1",
+            title: "Fast onboarding",
+            snippet: "Onboarding was fast and support was helpful.",
+            author_name: "Ari",
+            reviewed_at: "2026-03-10",
+            rating: 4.8,
+            rank: 0.95,
+          },
+        ],
         answer: "Question queued for analysis.",
       };
     });
@@ -113,6 +187,9 @@ describe("CoreAnalystWorkspace", () => {
     fireEvent.click(await screen.findByRole("button", { name: "What themes appear most often?" }));
 
     expect(await screen.findByText("Question queued for analysis.")).toBeInTheDocument();
+    expect(await screen.findByLabelText(/supporting review evidence/i)).toBeInTheDocument();
+    expect(await screen.findByText("E1")).toBeInTheDocument();
+    expect(await screen.findByText("Ari")).toBeInTheDocument();
     expect(await screen.findByText("Analyst")).toBeInTheDocument();
     expect(await screen.findByText("Assistant")).toBeInTheDocument();
     expect(await screen.findByText(/Conversation started\. Showing top suggestion\./i)).toBeInTheDocument();

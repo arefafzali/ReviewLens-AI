@@ -38,3 +38,24 @@ class CitationItem(BaseModel):
     reviewed_at: str | None = None
     rating: float | None = None
     rank: float
+
+
+class PersistedChatMessage(BaseModel):
+    """Persisted chat message shape returned by history hydration APIs."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    message_index: int = Field(ge=1)
+    role: str
+    content: str
+    is_refusal: bool = False
+    metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class ChatHistoryResponse(BaseModel):
+    """Bounded chat history payload for frontend continuity."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    chat_session_id: UUID
+    messages: list[PersistedChatMessage] = Field(default_factory=list)

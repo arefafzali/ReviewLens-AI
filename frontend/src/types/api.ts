@@ -150,3 +150,16 @@ export type ChatStreamErrorEvent = {
   code: string;
   message: string;
 };
+
+export type PersistedChatMessage = {
+  message_index: number;
+  role: "user" | "assistant";
+  content: string;
+  is_refusal: boolean;
+  metadata: Record<string, unknown>;
+};
+
+export type ChatHistoryResponse = {
+  chat_session_id: string;
+  messages: PersistedChatMessage[];
+};

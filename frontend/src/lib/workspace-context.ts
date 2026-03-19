@@ -1,6 +1,10 @@
 const WORKSPACE_STORAGE_KEY = "reviewlens.workspace_id";
 const PRODUCT_STORAGE_KEY = "reviewlens.product_id";
 
+function chatSessionStorageKey(workspaceId: string, productId: string): string {
+  return `reviewlens.chat_session_id.${workspaceId}.${productId}`;
+}
+
 function stableUuidFallback(): string {
   const randomHex = Math.random().toString(16).slice(2).padEnd(12, "0").slice(0, 12);
   return `00000000-0000-4000-8000-${randomHex}`;
@@ -36,4 +40,18 @@ export function getWorkspaceContextIds(): { workspaceId: string; productId: stri
     workspaceId: workspaceFromEnv ?? getOrCreateId(WORKSPACE_STORAGE_KEY),
     productId: productFromEnv ?? getOrCreateId(PRODUCT_STORAGE_KEY),
   };
+}
+
+export function getStoredChatSessionId(workspaceId: string, productId: string): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  return window.localStorage.getItem(chatSessionStorageKey(workspaceId, productId));
+}
+
+export function setStoredChatSessionId(workspaceId: string, productId: string, chatSessionId: string): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.setItem(chatSessionStorageKey(workspaceId, productId), chatSessionId);
 }

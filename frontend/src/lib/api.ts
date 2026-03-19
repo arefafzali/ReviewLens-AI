@@ -3,6 +3,7 @@ import type {
   CSVIngestionPayload,
   EnsureContextPayload,
   EnsureContextResponse,
+  ChatHistoryResponse,
   FastApiErrorResponse,
   HealthResponse,
   IngestionAttemptResponse,
@@ -66,6 +67,23 @@ export class ApiClient {
       method: "POST",
       body: JSON.stringify(payload),
     });
+  }
+
+  async getChatHistory(
+    workspaceId: string,
+    productId: string,
+    chatSessionId?: string,
+    maxTurns: number = 6,
+  ): Promise<ChatHistoryResponse> {
+    const params = new URLSearchParams({
+      workspace_id: workspaceId,
+      product_id: productId,
+      max_turns: String(maxTurns),
+    });
+    if (chatSessionId) {
+      params.set("chat_session_id", chatSessionId);
+    }
+    return this.request<ChatHistoryResponse>(`/chat/history?${params.toString()}`, { method: "GET" });
   }
 
   private async request<T>(path: string, init: RequestInit, timeoutMs: number = this.timeoutMs): Promise<T> {

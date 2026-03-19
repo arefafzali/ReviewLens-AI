@@ -25,6 +25,10 @@ The root page now provides a minimal analyst workspace surface for the core loop
 	- final assistant message settles from structured `done` payload classification and answer text
 	- classification-specific rendering distinguishes `answer`, `out_of_scope`, and `insufficient_evidence`
 	- refusal/evidence-limited outcomes explicitly reinforce grounding to ingested reviews only
+	- assistant answers render compact supporting citation snippets from backend evidence payloads
+	- citation cards include available review metadata (evidence id, title, author, date, rating) when present
+	- recent persisted conversation history is hydrated on workspace re-entry/page refresh
+	- active chat session id is persisted per workspace/product to keep follow-up turns coherent
 
 When URL ingestion is blocked or low-confidence, the ingestion panel provides inline CSV fallback guidance.
 

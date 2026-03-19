@@ -242,3 +242,123 @@ def test_chat_stream_classifies_insufficient_evidence(monkeypatch) -> None:
 
     app.dependency_overrides.clear()
     verify_db.close()
+
+
+def test_chat_history_returns_recent_messages_for_latest_session(monkeypatch) -> None:
+    client, verify_db, app = _build_app_with_db()
+    workspace_id, product_id = _seed_context(verify_db, with_review=True)
+
+    monkeypatch.setattr(
+        "app.routers.chat.build_llm_provider",
+        lambda *_: FakeLLMProvider(chat_response="The reviews highlight fast onboarding and responsive support."),
+    )
+
+    status_code, _, events = _post_stream_events(
+        client,
+        {
+            "workspace_id": workspace_id,
+            "product_id": product_id,
+            "question": "What do users say about onboarding?",
+        },
+    )
+    assert status_code == 200
+    done = next(item for item in events if item["event"] == "done")
+    session_id = done["data"]["chat_session_id"]
+
+    second_status, _, _ = _post_stream_events(
+        client,
+        {
+            "workspace_id": workspace_id,
+            "product_id": product_id,
+            "chat_session_id": session_id,
+            "question": "What concerns are mentioned?",
+        },
+    )
+    assert second_status == 200
+
+    history = client.get(
+        "/chat/history",
+        params={
+            "workspace_id": workspace_id,
+            "product_id": product_id,
+        },
+    )
+    assert history.status_code == 200
+    payload = history.json()
+    assert payload["chat_session_id"] == session_id
+    assert len(payload["messages"]) == 4
+    assert payload["messages"][0]["role"] == "user"
+    assert payload["messages"][1]["role"] == "assistant"
+    assert isinstance(payload["messages"][1]["metadata"], dict)
+
+    app.dependency_overrides.clear()
+    verify_db.close()
+
+
+def test_chat_history_respects_max_turns(monkeypatch) -> None:
+    client, verify_db, app = _build_app_with_db()
+    workspace_id, product_id = _seed_context(verify_db, with_review=True)
+
+    monkeypatch.setattr(
+        "app.routers.chat.build_llm_provider",
+        lambda *_: FakeLLMProvider(chat_response="Grounded answer."),
+    )
+
+    first_status, _, first_events = _post_stream_events(
+        client,
+        {
+            "workspace_id": workspace_id,
+            "product_id": product_id,
+            "question": "Q1",
+        },
+    )
+    assert first_status == 200
+    session_id = next(item for item in first_events if item["event"] == "done")["data"]["chat_session_id"]
+
+    for question in ["Q2", "Q3"]:
+        follow_status, _, _ = _post_stream_events(
+            client,
+            {
+                "workspace_id": workspace_id,
+                "product_id": product_id,
+                "chat_session_id": session_id,
+                "question": question,
+            },
+        )
+        assert follow_status == 200
+
+    history = client.get(
+        "/chat/history",
+        params={
+            "workspace_id": workspace_id,
+            "product_id": product_id,
+            "chat_session_id": session_id,
+            "max_turns": 2,
+        },
+    )
+    assert history.status_code == 200
+    payload = history.json()
+    assert payload["chat_session_id"] == session_id
+    assert len(payload["messages"]) == 4
+    assert payload["messages"][0]["content"] == "Q2"
+    assert payload["messages"][2]["content"] == "Q3"
+
+    app.dependency_overrides.clear()
+    verify_db.close()
+
+
+def test_chat_history_returns_not_found_when_no_session_exists() -> None:
+    client, verify_db, app = _build_app_with_db()
+    workspace_id, product_id = _seed_context(verify_db, with_review=True)
+
+    history = client.get(
+        "/chat/history",
+        params={
+            "workspace_id": workspace_id,
+            "product_id": product_id,
+        },
+    )
+    assert history.status_code == 404
+
+    app.dependency_overrides.clear()
+    verify_db.close()

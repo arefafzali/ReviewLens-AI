@@ -20,6 +20,25 @@ class ConversationMemoryContext:
     recent_messages: list[LLMMessage]
 
 
+@dataclass(frozen=True)
+class PersistedConversationMessage:
+    """Persisted message contract used by history-hydration APIs."""
+
+    message_index: int
+    role: str
+    content: str
+    is_refusal: bool
+    metadata: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class PersistedConversationHistory:
+    """Resolved chat history payload for an existing or latest session."""
+
+    session_id: UUID
+    messages: list[PersistedConversationMessage]
+
+
 class ConversationMemoryService:
     """Handles chat session lifecycle and bounded recent-history retrieval."""
 
@@ -75,3 +94,44 @@ class ConversationMemoryService:
             assistant_is_refusal=assistant_is_refusal,
             assistant_metadata=assistant_metadata,
         )
+
+    def get_recent_history(
+        self,
+        *,
+        workspace_id: UUID,
+        product_id: UUID,
+        session_id: UUID | None = None,
+        max_turns: int = DEFAULT_MAX_TURNS,
+    ) -> PersistedConversationHistory | None:
+        if session_id is not None:
+            session = self._repository.get_session(
+                workspace_id=workspace_id,
+                product_id=product_id,
+                session_id=session_id,
+            )
+        else:
+            session = self._repository.get_latest_session(
+                workspace_id=workspace_id,
+                product_id=product_id,
+            )
+
+        if session is None:
+            return None
+
+        window = self._repository.load_recent_window(
+            session_id=session.id,
+            workspace_id=workspace_id,
+            product_id=product_id,
+            max_turns=max_turns,
+        )
+        persisted = [
+            PersistedConversationMessage(
+                message_index=item.message_index,
+                role=item.role,
+                content=item.content,
+                is_refusal=item.is_refusal,
+                metadata=dict(item.message_metadata or {}),
+            )
+            for item in window
+        ]
+        return PersistedConversationHistory(session_id=session.id, messages=persisted)
