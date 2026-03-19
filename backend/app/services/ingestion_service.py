@@ -128,6 +128,28 @@ class IngestionOrchestrationService:
                 extracted_reviews=evaluation.extracted_reviews,
             )
 
+        summary_snapshot: dict[str, Any] | None = None
+        if evaluation.status == IngestionRunStatus.SUCCESS:
+            analytics = self._repository.compute_and_store_ingestion_analytics(
+                workspace_id=payload.workspace_id,
+                product_id=payload.product_id,
+                ingestion_run_id=run.id,
+            )
+            summary_snapshot = analytics.summary_snapshot
+            diagnostics = dict(evaluation.diagnostics or {})
+            diagnostics["analytics_generated"] = True
+            diagnostics["summary_total_reviews"] = summary_snapshot.get("total_reviews", 0)
+            evaluation = EvaluationResult(
+                status=evaluation.status,
+                outcome_code=evaluation.outcome_code,
+                captured_reviews=evaluation.captured_reviews,
+                message=evaluation.message,
+                warnings=evaluation.warnings,
+                error_detail=evaluation.error_detail,
+                diagnostics=diagnostics,
+                extracted_reviews=evaluation.extracted_reviews,
+            )
+
         run = self._repository.finalize_attempt(
             run=run,
             status=evaluation.status,
@@ -137,6 +159,7 @@ class IngestionOrchestrationService:
             warnings=evaluation.warnings,
             error_detail=evaluation.error_detail,
             diagnostics=evaluation.diagnostics,
+            summary_snapshot=summary_snapshot,
         )
         return self._to_response(run)
 
@@ -182,6 +205,28 @@ class IngestionOrchestrationService:
                 extracted_reviews=evaluation.extracted_reviews,
             )
 
+        summary_snapshot: dict[str, Any] | None = None
+        if evaluation.status == IngestionRunStatus.SUCCESS:
+            analytics = self._repository.compute_and_store_ingestion_analytics(
+                workspace_id=payload.workspace_id,
+                product_id=payload.product_id,
+                ingestion_run_id=run.id,
+            )
+            summary_snapshot = analytics.summary_snapshot
+            diagnostics = dict(evaluation.diagnostics or {})
+            diagnostics["analytics_generated"] = True
+            diagnostics["summary_total_reviews"] = summary_snapshot.get("total_reviews", 0)
+            evaluation = EvaluationResult(
+                status=evaluation.status,
+                outcome_code=evaluation.outcome_code,
+                captured_reviews=evaluation.captured_reviews,
+                message=evaluation.message,
+                warnings=evaluation.warnings,
+                error_detail=evaluation.error_detail,
+                diagnostics=diagnostics,
+                extracted_reviews=evaluation.extracted_reviews,
+            )
+
         run = self._repository.finalize_attempt(
             run=run,
             status=evaluation.status,
@@ -191,6 +236,7 @@ class IngestionOrchestrationService:
             warnings=evaluation.warnings,
             error_detail=evaluation.error_detail,
             diagnostics=evaluation.diagnostics,
+            summary_snapshot=summary_snapshot,
         )
         return self._to_response(run)
 

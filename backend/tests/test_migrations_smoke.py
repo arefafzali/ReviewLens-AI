@@ -30,3 +30,5 @@ def test_alembic_upgrade_head_sql_smoke(monkeypatch, capsys) -> None:
     assert "create index ix_ingestion_runs_status" in output
     assert "create index ix_ingestion_runs_outcome_code" in output
     assert "unsupported_source" in output
+    assert "add column stats" in output
+    assert "add column summary_snapshot" in output

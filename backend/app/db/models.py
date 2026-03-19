@@ -38,6 +38,7 @@ class Product(Base):
     external_product_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    stats: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
@@ -56,6 +57,7 @@ class IngestionRun(Base):
     records_ingested: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     error_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     result_metadata: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    summary_snapshot: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)

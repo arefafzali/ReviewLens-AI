@@ -8,7 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.db.base import Base
-from app.db.models import Product, Review, Workspace
+from app.db.models import IngestionRun, Product, Review, Workspace
 from app.repositories.ingestion_runs import IngestionRunRepository
 from app.schemas.ingestion import (
     CSVIngestionRequest,
@@ -184,7 +184,15 @@ Solid feature set for teams,4,Ana T,Useful,2026-03-02
     assert result.diagnostics["parser"] == "csv_alias_mapping"
     assert result.diagnostics["persisted_reviews"] == 2
     assert result.diagnostics["duplicates_removed"] == 0
+    assert result.diagnostics["analytics_generated"] is True
     assert len(stored_reviews) == 2
+
+    product = db.query(Product).filter(Product.id == product_id).one()
+    run = db.query(IngestionRun).filter(IngestionRun.id == result.ingestion_run_id).one()
+    assert product.stats["total_reviews"] == 2
+    assert "rating_histogram" in product.stats
+    assert run.summary_snapshot["total_reviews"] == 2
+    assert run.summary_snapshot["review_count_over_time"][0]["date"] == "2026-03-01"
 
 
 def test_csv_ingestion_malformed_rows_are_explicit_failure() -> None:

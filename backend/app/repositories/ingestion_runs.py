@@ -12,8 +12,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.db.models import IngestionRun, Review
+from app.db.models import IngestionRun, Product, Review
 from app.schemas.ingestion import IngestionOutcomeCode, IngestionRunStatus, IngestionSourceType
+from app.services.ingestion.review_analytics import ReviewAnalyticsRow, compute_ingestion_analytics
 from app.services.ingestion.review_normalization import normalize_reviews_for_persistence
 
 
@@ -25,6 +26,14 @@ class PersistedReviewsResult:
     inserted_reviews: int
     duplicates_removed: int
     skipped_missing_body: int
+
+
+@dataclass(frozen=True)
+class IngestionAnalyticsResult:
+    """Computed analytics snapshots for product aggregate and ingestion run."""
+
+    product_stats: dict[str, Any]
+    summary_snapshot: dict[str, Any]
 
 
 class IngestionRunRepository:
@@ -78,6 +87,7 @@ class IngestionRunRepository:
         warnings: list[str] | None = None,
         error_detail: str | None = None,
         diagnostics: dict[str, Any] | None = None,
+        summary_snapshot: dict[str, Any] | None = None,
     ) -> IngestionRun:
         now = datetime.now(timezone.utc)
 
@@ -90,6 +100,7 @@ class IngestionRunRepository:
             "warnings": warnings or [],
             "diagnostics": diagnostics or {},
         }
+        run.summary_snapshot = summary_snapshot or {}
         run.completed_at = now
         run.updated_at = now
 
@@ -178,6 +189,51 @@ class IngestionRunRepository:
             skipped_missing_body=normalized.skipped_missing_body,
         )
 
+    def compute_and_store_ingestion_analytics(
+        self,
+        *,
+        workspace_id: UUID,
+        product_id: UUID,
+        ingestion_run_id: UUID,
+    ) -> IngestionAnalyticsResult:
+        product_reviews = (
+            self._db.query(Review)
+            .filter(
+                Review.workspace_id == workspace_id,
+                Review.product_id == product_id,
+            )
+            .all()
+        )
+        run_reviews = (
+            self._db.query(Review)
+            .filter(
+                Review.workspace_id == workspace_id,
+                Review.product_id == product_id,
+                Review.ingestion_run_id == ingestion_run_id,
+            )
+            .all()
+        )
+
+        product_stats = compute_ingestion_analytics([_to_analytics_row(item) for item in product_reviews])
+        summary_snapshot = compute_ingestion_analytics([_to_analytics_row(item) for item in run_reviews])
+
+        product = (
+            self._db.query(Product)
+            .filter(
+                Product.id == product_id,
+                Product.workspace_id == workspace_id,
+            )
+            .first()
+        )
+        if product is not None:
+            product.stats = product_stats
+            self._db.add(product)
+
+        return IngestionAnalyticsResult(
+            product_stats=product_stats,
+            summary_snapshot=summary_snapshot,
+        )
+
     def find_cached_url_ingestion(
         self,
         *,
@@ -253,3 +309,16 @@ def _safe_text(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _to_analytics_row(review: Review) -> ReviewAnalyticsRow:
+    return ReviewAnalyticsRow(
+        title=review.title,
+        body=review.body,
+        rating=review.rating,
+        author_name=review.author_name,
+        reviewed_at=review.reviewed_at,
+        source_review_id=review.source_review_id,
+        review_fingerprint=review.review_fingerprint,
+        created_at=review.created_at,
+    )
