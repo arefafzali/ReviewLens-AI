@@ -60,6 +60,16 @@ class _FakePipeline:
         return self._result
 
 
+class _FixedQuestionGenerator:
+    def generate_questions(self, *, analytics, rows):
+        return [
+            "What are users saying about onboarding speed?",
+            "Which concerns appear in lower-rated reviews?",
+            "How did sentiment evolve over time?",
+            "Which review snippets best represent overall sentiment?",
+        ]
+
+
 def test_url_ingestion_success_persists_final_state(monkeypatch) -> None:
     db = _setup_db()
     workspace_id, product_id = _seed_workspace_and_product(db)
@@ -191,8 +201,11 @@ Solid feature set for teams,4,Ana T,Useful,2026-03-02
     run = db.query(IngestionRun).filter(IngestionRun.id == result.ingestion_run_id).one()
     assert product.stats["total_reviews"] == 2
     assert "rating_histogram" in product.stats
+    assert len(product.stats["suggested_questions"]) >= 4
+    assert all(isinstance(item, str) and item for item in product.stats["suggested_questions"])
     assert run.summary_snapshot["total_reviews"] == 2
     assert run.summary_snapshot["review_count_over_time"][0]["date"] == "2026-03-01"
+    assert len(run.summary_snapshot["suggested_questions"]) >= 4
 
 
 def test_csv_ingestion_malformed_rows_are_explicit_failure() -> None:
@@ -418,3 +431,36 @@ def test_url_ingestion_reload_bypasses_cache_and_reextracts(monkeypatch) -> None
     assert result.captured_reviews == 1
     assert result.diagnostics["cache_hit"] is False
     assert result.diagnostics["reload"] is True
+
+
+def test_csv_ingestion_persists_injected_suggested_questions() -> None:
+    db = _setup_db()
+    workspace_id, product_id = _seed_workspace_and_product(db)
+    repository = IngestionRunRepository(db, suggested_question_generator=_FixedQuestionGenerator())
+    service = IngestionOrchestrationService(repository)
+
+    csv_content = """body,rating,author,date
+Great onboarding and support,5,Sam,2026-03-01
+Reporting needs improvement,2,Ana,2026-03-02
+"""
+
+    result = service.attempt_csv_ingestion(
+        CSVIngestionRequest(
+            workspace_id=workspace_id,
+            product_id=product_id,
+            csv_filename="reviews.csv",
+            csv_content=csv_content,
+        )
+    )
+
+    run = db.query(IngestionRun).filter(IngestionRun.id == result.ingestion_run_id).one()
+    product = db.query(Product).filter(Product.id == product_id).one()
+
+    expected = [
+        "What are users saying about onboarding speed?",
+        "Which concerns appear in lower-rated reviews?",
+        "How did sentiment evolve over time?",
+        "Which review snippets best represent overall sentiment?",
+    ]
+    assert run.summary_snapshot["suggested_questions"] == expected
+    assert product.stats["suggested_questions"] == expected

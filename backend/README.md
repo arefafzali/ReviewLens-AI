@@ -84,6 +84,12 @@ For successful URL/CSV ingestions, diagnostics include normalization and dedupe 
 - `duplicates_removed`: rows removed by deterministic deduplication
 - `skipped_missing_body`: rows dropped because required review text was missing
 
+Successful ingestions also compute and persist grounded starter questions to support
+guardrailed follow-up analysis:
+
+- `products.stats.suggested_questions`: product-level starter questions based on stored reviews
+- `ingestion_runs.summary_snapshot.suggested_questions`: run-level starter questions for the latest ingestion batch
+
 URL ingestion architecture:
 
 - Firecrawl is the only active fetch provider

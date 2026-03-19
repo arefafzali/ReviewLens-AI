@@ -16,6 +16,10 @@ from app.db.models import IngestionRun, Product, Review
 from app.schemas.ingestion import IngestionOutcomeCode, IngestionRunStatus, IngestionSourceType
 from app.services.ingestion.review_analytics import ReviewAnalyticsRow, compute_ingestion_analytics
 from app.services.ingestion.review_normalization import normalize_reviews_for_persistence
+from app.services.ingestion.review_suggested_questions import (
+    DeterministicSuggestedQuestionGenerator,
+    SuggestedQuestionGenerator,
+)
 
 
 @dataclass(frozen=True)
@@ -39,8 +43,9 @@ class IngestionAnalyticsResult:
 class IngestionRunRepository:
     """Encapsulates ingestion run create/finalize persistence operations."""
 
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: Session, suggested_question_generator: SuggestedQuestionGenerator | None = None) -> None:
         self._db = db
+        self._suggested_question_generator = suggested_question_generator or DeterministicSuggestedQuestionGenerator()
 
     def create_attempt(
         self,
@@ -214,8 +219,21 @@ class IngestionRunRepository:
             .all()
         )
 
-        product_stats = compute_ingestion_analytics([_to_analytics_row(item) for item in product_reviews])
-        summary_snapshot = compute_ingestion_analytics([_to_analytics_row(item) for item in run_reviews])
+        product_rows = [_to_analytics_row(item) for item in product_reviews]
+        run_rows = [_to_analytics_row(item) for item in run_reviews]
+        product_stats = compute_ingestion_analytics(product_rows)
+        summary_snapshot = compute_ingestion_analytics(run_rows)
+
+        product_questions = self._suggested_question_generator.generate_questions(
+            analytics=product_stats,
+            rows=product_rows,
+        )
+        summary_questions = self._suggested_question_generator.generate_questions(
+            analytics=summary_snapshot,
+            rows=run_rows,
+        )
+        product_stats["suggested_questions"] = product_questions
+        summary_snapshot["suggested_questions"] = summary_questions
 
         product = (
             self._db.query(Product)
