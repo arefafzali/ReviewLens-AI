@@ -6,7 +6,7 @@ APP_TITLE = "ReviewLens AI API"
 APP_VERSION = "0.1.0"
 APP_DESCRIPTION = (
     "Secure review intelligence backend for ORM analysts. "
-    "Supports ingestion orchestration for Capterra URL and CSV paths, "
+    "Supports ingestion orchestration for a URL and CSV paths, "
     "plus health and lifecycle APIs."
 )
 
