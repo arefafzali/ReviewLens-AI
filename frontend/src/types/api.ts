@@ -78,6 +78,7 @@ export type IngestionAnalyticsSummary = {
   review_count_over_time?: IngestionTimeBucket[];
   date_range?: IngestionDateRange;
   top_keywords?: IngestionKeywordCount[];
+  suggested_questions?: string[];
 };
 
 export type IngestionAttemptResponse = {

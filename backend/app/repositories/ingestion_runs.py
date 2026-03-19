@@ -300,10 +300,12 @@ class IngestionRunRepository:
             return None
 
         cached_diagnostics = cached_run.result_metadata.get("diagnostics", {}) if cached_run.result_metadata else {}
+        cached_summary = cached_run.summary_snapshot if isinstance(cached_run.summary_snapshot, dict) else {}
         return {
             "source_ingestion_run_id": cached_run.id,
             "cached_reviews": cached_reviews,
             "source_diagnostics": cached_diagnostics if isinstance(cached_diagnostics, dict) else {},
+            "source_summary_snapshot": cached_summary,
         }
 
 

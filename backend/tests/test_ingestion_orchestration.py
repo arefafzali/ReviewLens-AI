@@ -351,6 +351,104 @@ def test_url_ingestion_uses_cache_when_reviews_already_stored(monkeypatch) -> No
     assert result.captured_reviews == 1
     assert result.diagnostics["cache_hit"] is True
     assert result.diagnostics["cached_reviews"] == 1
+    assert result.summary_snapshot["total_reviews"] == 1
+    assert isinstance(result.summary_snapshot.get("suggested_questions"), list)
+
+
+def test_url_ingestion_cache_hit_uses_product_summary_when_latest_cached_run_has_no_rows(monkeypatch) -> None:
+    db = _setup_db()
+    workspace_id, product_id = _seed_workspace_and_product(db)
+    repository = IngestionRunRepository(db)
+    service = IngestionOrchestrationService(repository)
+
+    first_run = repository.create_attempt(
+        workspace_id=workspace_id,
+        product_id=product_id,
+        source_type=IngestionSourceType.SCRAPE,
+        target_url=CAPTERRA_PRESSPAGE_REVIEWS_URL,
+        csv_filename=None,
+    )
+    inserted = repository.persist_extracted_reviews(
+        workspace_id=workspace_id,
+        product_id=product_id,
+        ingestion_run_id=first_run.id,
+        source_host="www.capterra.com",
+        reviews=[
+            {
+                "title": "Great",
+                "body": "Very useful and reliable platform for our comms team.",
+                "rating": "5",
+                "author": "Jess",
+                "date": "2026-03-01",
+                "url": "https://example.com/review/a",
+            }
+        ],
+    )
+    assert inserted.inserted_reviews == 1
+    repository.finalize_attempt(
+        run=first_run,
+        status=IngestionRunStatus.SUCCESS,
+        outcome_code=IngestionOutcomeCode.OK,
+        captured_reviews=1,
+        message="Initial ingestion completed successfully.",
+        warnings=[],
+        diagnostics={"provider": "firecrawl", "source_host": "www.capterra.com", "parser": "gpt_markdown_chunks"},
+    )
+
+    duplicate_only_run = repository.create_attempt(
+        workspace_id=workspace_id,
+        product_id=product_id,
+        source_type=IngestionSourceType.SCRAPE,
+        target_url=CAPTERRA_PRESSPAGE_REVIEWS_URL,
+        csv_filename=None,
+    )
+    duplicate_only_inserted = repository.persist_extracted_reviews(
+        workspace_id=workspace_id,
+        product_id=product_id,
+        ingestion_run_id=duplicate_only_run.id,
+        source_host="www.capterra.com",
+        reviews=[
+            {
+                "title": "Great",
+                "body": "Very useful and reliable platform for our comms team.",
+                "rating": "5",
+                "author": "Jess",
+                "date": "2026-03-01",
+                "url": "https://example.com/review/a",
+            }
+        ],
+    )
+    assert duplicate_only_inserted.inserted_reviews == 0
+    repository.finalize_attempt(
+        run=duplicate_only_run,
+        status=IngestionRunStatus.SUCCESS,
+        outcome_code=IngestionOutcomeCode.OK,
+        captured_reviews=1,
+        message="Duplicate-only ingestion completed successfully.",
+        warnings=[],
+        diagnostics={"provider": "firecrawl", "source_host": "www.capterra.com", "parser": "gpt_markdown_chunks"},
+        summary_snapshot={},
+    )
+
+    monkeypatch.setattr(
+        "app.services.ingestion_service.URLIngestionPipeline.with_firecrawl",
+        lambda **_: (_ for _ in ()).throw(AssertionError("pipeline should not be called on cache hit")),
+    )
+
+    result = service.attempt_url_ingestion(
+        URLIngestionRequest(
+            workspace_id=workspace_id,
+            product_id=product_id,
+            target_url=CAPTERRA_PRESSPAGE_REVIEWS_URL,
+        )
+    )
+
+    assert result.status == IngestionRunStatus.SUCCESS
+    assert result.outcome_code == IngestionOutcomeCode.OK
+    assert result.diagnostics["cache_hit"] is True
+    assert result.summary_snapshot["total_reviews"] == 1
+    assert isinstance(result.summary_snapshot.get("suggested_questions"), list)
+    assert len(result.summary_snapshot.get("suggested_questions") or []) >= 1
 
 
 def test_url_ingestion_reload_bypasses_cache_and_reextracts(monkeypatch) -> None:

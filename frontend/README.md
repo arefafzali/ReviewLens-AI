@@ -13,8 +13,12 @@ The root page now provides a minimal analyst workspace surface for the core loop
 - ingestion summary section updates after successful URL or CSV ingestion without page reload
 	- renders capture stats, rating histogram, review trend, and top recurring keywords from backend analytics
 	- handles sparse datasets with explicit low-signal guidance
-- suggested questions section (grounded starter prompts placeholder)
-- chat section (guardrailed Q&A placeholder)
+- suggested questions section now renders backend-provided `summary_snapshot.suggested_questions`
+	- displays up to 5 grounded starter prompts
+	- clicking a suggestion seeds/submits an analyst chat question
+	- once chat starts, the suggestions section reduces to top suggestion with an option to expand
+	- handles no-suggestion backend responses with a graceful empty state
+- chat section now includes a lightweight analyst conversation panel for seeded/submitted questions
 
 When URL ingestion is blocked or low-confidence, the ingestion panel provides inline CSV fallback guidance.
 

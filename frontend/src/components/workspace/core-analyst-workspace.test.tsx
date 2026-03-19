@@ -49,6 +49,11 @@ describe("CoreAnalystWorkspace", () => {
           { keyword: "support", count: 5 },
           { keyword: "onboarding", count: 3 },
         ],
+        suggested_questions: [
+          "What themes appear most often?",
+          "What are the top strengths users mention?",
+          "Which concerns appear in lower-rated reviews?",
+        ],
       },
       started_at: "2026-03-19T10:00:00Z",
       completed_at: "2026-03-19T10:01:00Z",
@@ -66,5 +71,10 @@ describe("CoreAnalystWorkspace", () => {
     expect(await screen.findByText("4.25 / 5")).toBeInTheDocument();
     expect(await screen.findByText("support (5)")).toBeInTheDocument();
     expect(await screen.findByText("2026-03-10 to 2026-03-12")).toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole("button", { name: "What themes appear most often?" }));
+
+    expect(await screen.findByText("Question queued for grounded chat analysis.")).toBeInTheDocument();
+    expect(await screen.findByText(/Conversation started\. Showing top suggestion\./i)).toBeInTheDocument();
   });
 });

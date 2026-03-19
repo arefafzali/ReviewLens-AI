@@ -59,6 +59,46 @@ class IngestionOrchestrationService:
                 target_url=str(payload.target_url),
             )
             if cached is not None:
+                source_summary = cached.get("source_summary_snapshot")
+                summary_snapshot = source_summary if isinstance(source_summary, dict) else {}
+
+                # Duplicate-only runs can report captured_reviews > 0 but have zero rows linked
+                # to that ingestion_run_id; in that case prefer product-level analytics so UI
+                # still receives the same complete summary shape as a fresh ingestion.
+                has_suggested_questions = isinstance(summary_snapshot.get("suggested_questions"), list) and len(
+                    summary_snapshot.get("suggested_questions") or []
+                ) > 0
+                has_total_reviews = isinstance(summary_snapshot.get("total_reviews"), int) and summary_snapshot.get(
+                    "total_reviews", 0
+                ) > 0
+                if not has_suggested_questions or not has_total_reviews:
+                    analytics = self._repository.compute_and_store_ingestion_analytics(
+                        workspace_id=payload.workspace_id,
+                        product_id=payload.product_id,
+                        ingestion_run_id=cached["source_ingestion_run_id"],
+                    )
+                    candidate_summary = (
+                        analytics.summary_snapshot
+                        if isinstance(analytics.summary_snapshot, dict)
+                        else {}
+                    )
+                    candidate_has_questions = isinstance(candidate_summary.get("suggested_questions"), list) and len(
+                        candidate_summary.get("suggested_questions") or []
+                    ) > 0
+                    candidate_has_total = isinstance(candidate_summary.get("total_reviews"), int) and candidate_summary.get(
+                        "total_reviews", 0
+                    ) > 0
+                    summary_snapshot = (
+                        candidate_summary if candidate_has_questions and candidate_has_total else analytics.product_stats
+                    )
+
+                if not isinstance(summary_snapshot.get("suggested_questions"), list):
+                    summary_snapshot = dict(summary_snapshot)
+                    summary_snapshot["suggested_questions"] = []
+                if not isinstance(summary_snapshot.get("total_reviews"), int):
+                    summary_snapshot = dict(summary_snapshot)
+                    summary_snapshot["total_reviews"] = int(cached["cached_reviews"])
+
                 source_diagnostics = dict(cached.get("source_diagnostics", {}))
                 diagnostics = {
                     "cache_hit": True,
@@ -68,6 +108,8 @@ class IngestionOrchestrationService:
                     "source_host": source_diagnostics.get("source_host"),
                     "provider": source_diagnostics.get("provider"),
                     "parser": source_diagnostics.get("parser"),
+                    "analytics_generated": True,
+                    "summary_total_reviews": summary_snapshot.get("total_reviews", 0),
                     "reload": False,
                 }
                 run = self._repository.finalize_attempt(
@@ -79,6 +121,7 @@ class IngestionOrchestrationService:
                     warnings=[],
                     error_detail=None,
                     diagnostics=diagnostics,
+                    summary_snapshot=summary_snapshot,
                 )
                 return self._to_response(run)
 

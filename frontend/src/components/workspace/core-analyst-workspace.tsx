@@ -4,8 +4,14 @@ import React from "react";
 import { useState } from "react";
 import type { ReactNode } from "react";
 
+import {
+  AnalystChatPanel,
+  buildChatMessagesForQuestion,
+  type ChatMessage,
+} from "@/components/workspace/analyst-chat-panel";
 import { IngestionPanel } from "@/components/workspace/ingestion-panel";
 import { IngestionSummaryDashboard } from "@/components/workspace/ingestion-summary-dashboard";
+import { SuggestedQuestions } from "@/components/workspace/suggested-questions";
 import type { IngestionAttemptResponse } from "@/types/api";
 
 type SectionStatus = "loading" | "ready";
@@ -17,48 +23,6 @@ type WorkspaceSection = {
   status: SectionStatus;
   placeholder: ReactNode;
 };
-
-const SECTIONS: WorkspaceSection[] = [
-  {
-    id: "ingestion-summary",
-    title: "Ingestion Summary",
-    description: "Show outcome, capture counts, analytics highlights, and extraction diagnostics.",
-    status: "loading",
-    placeholder: (
-      <div className="grid gap-2 sm:grid-cols-3">
-        <div className="h-14 animate-pulse rounded-md bg-muted" />
-        <div className="h-14 animate-pulse rounded-md bg-muted" />
-        <div className="h-14 animate-pulse rounded-md bg-muted" />
-      </div>
-    ),
-  },
-  {
-    id: "suggested-questions",
-    title: "Suggested Questions",
-    description: "Display grounded starter prompts generated from ingested reviews.",
-    status: "loading",
-    placeholder: (
-      <ul className="space-y-2">
-        <li className="h-8 animate-pulse rounded-md bg-muted" />
-        <li className="h-8 animate-pulse rounded-md bg-muted" />
-        <li className="h-8 animate-pulse rounded-md bg-muted" />
-      </ul>
-    ),
-  },
-  {
-    id: "analyst-chat",
-    title: "Analyst Chat",
-    description: "Host scoped multi-turn Q&A with source-grounded answers from ingested reviews.",
-    status: "loading",
-    placeholder: (
-      <div className="space-y-3">
-        <div className="h-24 animate-pulse rounded-md bg-muted" />
-        <div className="h-24 animate-pulse rounded-md bg-muted" />
-        <div className="h-10 animate-pulse rounded-md bg-muted" />
-      </div>
-    ),
-  },
-];
 
 function SectionStatusBadge({ status }: { status: SectionStatus }): ReactNode {
   if (status === "ready") {
@@ -95,6 +59,15 @@ function WorkspaceSectionCard({ section }: { section: WorkspaceSection }): React
 
 export function CoreAnalystWorkspace(): ReactNode {
   const [latestIngestion, setLatestIngestion] = useState<IngestionAttemptResponse | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+
+  const suggestedQuestions = latestIngestion?.summary_snapshot?.suggested_questions ?? [];
+  const hasConversationStarted = chatMessages.length > 0;
+
+  function appendQuestionToChat(question: string): void {
+    const nextMessages = buildChatMessagesForQuestion(question);
+    setChatMessages((previous) => [...previous, ...nextMessages]);
+  }
 
   const summarySection: WorkspaceSection = {
     id: "ingestion-summary",
@@ -110,7 +83,41 @@ export function CoreAnalystWorkspace(): ReactNode {
     ),
   };
 
-  const trailingSections = SECTIONS.filter((section) => section.id !== "ingestion-summary");
+  const suggestedQuestionsSection: WorkspaceSection = {
+    id: "suggested-questions",
+    title: "Suggested Questions",
+    description: "Display grounded starter prompts generated from ingested reviews.",
+    status: latestIngestion ? "ready" : "loading",
+    placeholder: latestIngestion ? (
+      <SuggestedQuestions
+        questions={suggestedQuestions}
+        hasConversationStarted={hasConversationStarted}
+        onSelectQuestion={appendQuestionToChat}
+      />
+    ) : (
+      <ul className="space-y-2">
+        <li className="h-8 animate-pulse rounded-md bg-muted" />
+        <li className="h-8 animate-pulse rounded-md bg-muted" />
+        <li className="h-8 animate-pulse rounded-md bg-muted" />
+      </ul>
+    ),
+  };
+
+  const analystChatSection: WorkspaceSection = {
+    id: "analyst-chat",
+    title: "Analyst Chat",
+    description: "Host scoped multi-turn Q&A with source-grounded answers from ingested reviews.",
+    status: latestIngestion ? "ready" : "loading",
+    placeholder: latestIngestion ? (
+      <AnalystChatPanel messages={chatMessages} onSubmitQuestion={appendQuestionToChat} disabled={false} />
+    ) : (
+      <div className="space-y-3">
+        <div className="h-24 animate-pulse rounded-md bg-muted" />
+        <div className="h-24 animate-pulse rounded-md bg-muted" />
+        <div className="h-10 animate-pulse rounded-md bg-muted" />
+      </div>
+    ),
+  };
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -124,9 +131,8 @@ export function CoreAnalystWorkspace(): ReactNode {
         }}
       />
       <WorkspaceSectionCard key={summarySection.id} section={summarySection} />
-      {trailingSections.map((section) => (
-        <WorkspaceSectionCard key={section.id} section={section} />
-      ))}
+      <WorkspaceSectionCard key={suggestedQuestionsSection.id} section={suggestedQuestionsSection} />
+      <WorkspaceSectionCard key={analystChatSection.id} section={analystChatSection} />
     </div>
   );
 }
