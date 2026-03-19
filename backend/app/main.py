@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -46,6 +47,13 @@ def create_app() -> FastAPI:
     )
 
     app.state.settings = settings
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_allow_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     app.include_router(api_router, prefix=settings.api_prefix)
 
     @app.exception_handler(RequestValidationError)

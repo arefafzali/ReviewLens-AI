@@ -78,5 +78,6 @@ class IngestionAttemptResponse(BaseModel):
     message: str
     warnings: list[str] = Field(default_factory=list)
     diagnostics: dict[str, object] = Field(default_factory=dict)
+    summary_snapshot: dict[str, object] = Field(default_factory=dict)
     started_at: datetime | None = None
     completed_at: datetime | None = None

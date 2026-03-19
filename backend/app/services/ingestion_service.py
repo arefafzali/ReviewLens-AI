@@ -335,6 +335,7 @@ class IngestionOrchestrationService:
             message=str(metadata.get("message", "")),
             warnings=[str(item) for item in metadata.get("warnings", [])],
             diagnostics=dict(metadata.get("diagnostics", {})),
+            summary_snapshot=dict(run.summary_snapshot or {}),
             started_at=run.started_at,
             completed_at=run.completed_at,
         )

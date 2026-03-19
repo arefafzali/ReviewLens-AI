@@ -173,3 +173,29 @@ def test_ingestion_url_endpoint_processes_unknown_host_with_chunk_extraction() -
     assert payload["captured_reviews"] == 0
     assert payload["diagnostics"]["failure_stage"] is None
     assert payload["diagnostics"]["source_host"] == "www.g2.com"
+
+
+def test_ingestion_url_preflight_options_is_allowed() -> None:
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        future=True,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+
+    from app.main import create_app
+
+    app = create_app()
+
+    with TestClient(app) as client:
+        response = client.options(
+            "/ingestion/url",
+            headers={
+                "Origin": "http://localhost:3000",
+                "Access-Control-Request-Method": "POST",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == "http://localhost:3000"

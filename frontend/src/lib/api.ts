@@ -1,4 +1,13 @@
-import type { ApiErrorResponse, HealthResponse } from "@/types/api";
+import type {
+  ApiErrorResponse,
+  CSVIngestionPayload,
+  EnsureContextPayload,
+  EnsureContextResponse,
+  FastApiErrorResponse,
+  HealthResponse,
+  IngestionAttemptResponse,
+  URLIngestionPayload,
+} from "@/types/api";
 
 export type ApiClientConfig = {
   baseUrl?: string;
@@ -8,22 +17,26 @@ export type ApiClientConfig = {
 export class ApiClientError extends Error {
   readonly status: number;
   readonly payload?: ApiErrorResponse;
+  readonly rawPayload?: unknown;
 
-  constructor(message: string, status: number, payload?: ApiErrorResponse) {
+  constructor(message: string, status: number, payload?: ApiErrorResponse, rawPayload?: unknown) {
     super(message);
     this.name = "ApiClientError";
     this.status = status;
     this.payload = payload;
+    this.rawPayload = rawPayload;
   }
 }
 
 export class ApiClient {
   private readonly baseUrl: string;
   private readonly timeoutMs: number;
+  private readonly ingestionTimeoutMs: number;
 
   constructor(config: ApiClientConfig = {}) {
     this.baseUrl = config.baseUrl ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
     this.timeoutMs = config.timeoutMs ?? 10_000;
+    this.ingestionTimeoutMs = this.parseIngestionTimeoutMs(process.env.NEXT_PUBLIC_INGESTION_TIMEOUT_MS);
   }
 
   async getHealthLive(): Promise<HealthResponse> {
@@ -34,14 +47,36 @@ export class ApiClient {
     return this.request<HealthResponse>("/health/ready", { method: "GET" });
   }
 
-  private async request<T>(path: string, init: RequestInit): Promise<T> {
+  async postUrlIngestion(payload: URLIngestionPayload): Promise<IngestionAttemptResponse> {
+    return this.request<IngestionAttemptResponse>("/ingestion/url", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }, this.ingestionTimeoutMs);
+  }
+
+  async postCsvIngestion(payload: CSVIngestionPayload): Promise<IngestionAttemptResponse> {
+    return this.request<IngestionAttemptResponse>("/ingestion/csv", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }, this.ingestionTimeoutMs);
+  }
+
+  async postEnsureContext(payload: EnsureContextPayload): Promise<EnsureContextResponse> {
+    return this.request<EnsureContextResponse>("/context/ensure", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  private async request<T>(path: string, init: RequestInit, timeoutMs: number = this.timeoutMs): Promise<T> {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    const timeout = timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null;
 
     try {
       const response = await fetch(`${this.baseUrl}${path}`, {
         ...init,
         signal: controller.signal,
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
           ...(init.headers ?? {}),
@@ -50,23 +85,47 @@ export class ApiClient {
 
       if (!response.ok) {
         let payload: ApiErrorResponse | undefined;
+        let rawPayload: unknown;
         try {
-          payload = (await response.json()) as ApiErrorResponse;
+          rawPayload = (await response.json()) as ApiErrorResponse | FastApiErrorResponse;
+
+          const maybePayload = rawPayload as ApiErrorResponse;
+          if (maybePayload && typeof maybePayload === "object" && "error" in maybePayload) {
+            payload = maybePayload;
+          }
         } catch {
           payload = undefined;
+          rawPayload = undefined;
         }
 
         throw new ApiClientError(
           payload?.error.message ?? `Request failed with status ${response.status}`,
           response.status,
           payload,
+          rawPayload,
         );
       }
 
       return (await response.json()) as T;
     } finally {
-      clearTimeout(timeout);
+      if (timeout !== null) {
+        clearTimeout(timeout);
+      }
     }
+  }
+
+  private parseIngestionTimeoutMs(raw: string | undefined): number {
+    // Default to no client timeout for ingestion, since extraction can take minutes.
+    if (!raw || raw.trim() === "") {
+      return 0;
+    }
+
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      return 0;
+    }
+
+    return Math.floor(parsed);
   }
 }
 

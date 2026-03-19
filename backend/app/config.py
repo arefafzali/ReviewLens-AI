@@ -23,6 +23,14 @@ class Settings(BaseSettings):
     api_host: str = Field("0.0.0.0", description="HTTP bind host.")
     api_port: int = Field(8000, ge=1, le=65535, description="HTTP bind port.")
     api_prefix: str = Field("", description="Global API path prefix.")
+    cors_allow_origins: list[str] = Field(
+        default_factory=lambda: [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ],
+        validation_alias=AliasChoices("REVIEWLENS_CORS_ALLOW_ORIGINS"),
+        description="Allowed CORS origins for browser clients.",
+    )
     database_url: str = Field(
         ...,
         validation_alias=AliasChoices("REVIEWLENS_DATABASE_URL", "DATABASE_URL"),
@@ -89,6 +97,13 @@ class Settings(BaseSettings):
             allowed_values = ", ".join(sorted(allowed))
             raise ValueError(f"environment must be one of: {allowed_values}")
         return normalized
+
+    @field_validator("cors_allow_origins", mode="before")
+    @classmethod
+    def parse_cors_allow_origins(cls, value: object) -> object:
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(",") if item.strip()]
+        return value
 
 
 @lru_cache

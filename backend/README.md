@@ -48,8 +48,13 @@ docker compose up --build backend db
 
 ## Ingestion orchestration APIs
 
+- `POST /context/ensure`
 - `POST /ingestion/url`
 - `POST /ingestion/csv`
+
+`POST /context/ensure` is an idempotent bootstrap endpoint used by the frontend
+to ensure `workspace_id` and `product_id` records exist before ingestion calls.
+This prevents foreign-key failures when browser-local IDs are first seen by the backend.
 
 `POST /ingestion/url` supports cache control:
 
@@ -113,6 +118,7 @@ Optional local tuning:
 - `REVIEWLENS_OPENAI_MODEL` selects the extraction model.
 - `REVIEWLENS_OPENAI_TIMEOUT_SECONDS` controls extraction request timeout.
 - `REVIEWLENS_MARKDOWN_CHUNK_SIZE_CHARS`, `REVIEWLENS_MARKDOWN_CHUNK_OVERLAP_CHARS`, and `REVIEWLENS_MARKDOWN_MAX_CHUNKS` tune chunking behavior.
+- `REVIEWLENS_CORS_ALLOW_ORIGINS` configures allowed browser origins for API access (comma-separated, e.g. `http://localhost:3000,http://127.0.0.1:3000`).
 
 ## Verify Required Sample URLs
 
