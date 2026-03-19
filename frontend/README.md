@@ -23,6 +23,8 @@ The root page now provides a minimal analyst workspace surface for the core loop
 	- consumes backend `/chat/stream` SSE events (`meta`, `citations`, `token`, `done`, `error`)
 	- renders assistant tokens incrementally during streaming and supports cancel/abort
 	- final assistant message settles from structured `done` payload classification and answer text
+	- classification-specific rendering distinguishes `answer`, `out_of_scope`, and `insufficient_evidence`
+	- refusal/evidence-limited outcomes explicitly reinforce grounding to ingested reviews only
 
 When URL ingestion is blocked or low-confidence, the ingestion panel provides inline CSV fallback guidance.
 

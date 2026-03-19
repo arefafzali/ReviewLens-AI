@@ -2,7 +2,7 @@ import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { apiClient } from "@/lib/api";
-import { streamChatCompletion } from "@/lib/chat-stream";
+import { ChatStreamTransportError, streamChatCompletion } from "@/lib/chat-stream";
 
 import { CoreAnalystWorkspace } from "./core-analyst-workspace";
 
@@ -18,9 +18,13 @@ vi.mock("@/lib/api", async () => {
   };
 });
 
-vi.mock("@/lib/chat-stream", () => ({
-  streamChatCompletion: vi.fn(),
-}));
+vi.mock("@/lib/chat-stream", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/chat-stream")>("@/lib/chat-stream");
+  return {
+    ...actual,
+    streamChatCompletion: vi.fn(),
+  };
+});
 
 function mockSuccessfulIngestion() {
   vi.mocked(apiClient.postEnsureContext).mockResolvedValue({
@@ -144,6 +148,29 @@ describe("CoreAnalystWorkspace", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Response canceled by analyst.")).toBeInTheDocument();
+    });
+  });
+
+  it("surfaces backend stream errors instead of generic fallback text", async () => {
+    vi.mocked(streamChatCompletion).mockRejectedValueOnce(
+      new ChatStreamTransportError("OpenAI request timed out while generating response."),
+    );
+
+    render(<CoreAnalystWorkspace />);
+
+    fireEvent.change(screen.getByLabelText(/review page url/i), {
+      target: { value: "https://www.g2.com/products/example/reviews" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run URL Ingestion" }));
+    await screen.findByText("run-456");
+
+    fireEvent.change(screen.getByLabelText(/ask a question/i), {
+      target: { value: "What reasons in the reviews best explain the average rating?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit Question" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("OpenAI request timed out while generating response.")).toBeInTheDocument();
     });
   });
 });

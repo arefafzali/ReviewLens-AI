@@ -10,7 +10,7 @@ import {
   createUserChatMessage,
   type ChatMessage,
 } from "@/components/workspace/analyst-chat-panel";
-import { streamChatCompletion } from "@/lib/chat-stream";
+import { ChatStreamTransportError, streamChatCompletion } from "@/lib/chat-stream";
 import { getWorkspaceContextIds } from "@/lib/workspace-context";
 import { IngestionPanel } from "@/components/workspace/ingestion-panel";
 import { IngestionSummaryDashboard } from "@/components/workspace/ingestion-summary-dashboard";
@@ -145,12 +145,6 @@ export function CoreAnalystWorkspace(): ReactNode {
             classification: payload.classification,
           });
         },
-        onError: (payload) => {
-          finalizeAssistantMessage(assistantMessageId, {
-            content: payload.message || "Unable to complete this response.",
-            classification: "insufficient_evidence",
-          });
-        },
       });
 
       finalizeAssistantMessage(assistantMessageId, {
@@ -162,6 +156,16 @@ export function CoreAnalystWorkspace(): ReactNode {
       if (error instanceof DOMException && error.name === "AbortError") {
         finalizeAssistantMessage(assistantMessageId, {
           content: "Response canceled by analyst.",
+          classification: "insufficient_evidence",
+        });
+      } else if (error instanceof ChatStreamTransportError) {
+        finalizeAssistantMessage(assistantMessageId, {
+          content: error.message || "Chat streaming failed.",
+          classification: "insufficient_evidence",
+        });
+      } else if (error instanceof Error) {
+        finalizeAssistantMessage(assistantMessageId, {
+          content: error.message || "Chat streaming failed.",
           classification: "insufficient_evidence",
         });
       } else {

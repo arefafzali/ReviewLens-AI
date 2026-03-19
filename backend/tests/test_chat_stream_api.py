@@ -107,9 +107,6 @@ def _post_stream_events(client: TestClient, payload: dict[str, object]) -> tuple
     status_code = response.status_code
     events = _parse_sse_lines(lines)
 
-    if not events and "event:" in body and "\\n" in body:
-        events = _parse_sse_lines(body.replace("\\n", "\n").splitlines())
-
     if not events and "event:" in body and "data:" in body:
         compact_matches = re.findall(r"event:\s*([a-z_]+)\s*data:\s*(\{.*?\})(?=\s*event:|\s*$)", body, flags=re.IGNORECASE)
         for event_name, raw_json in compact_matches:

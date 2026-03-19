@@ -26,7 +26,7 @@ describe("AnalystChatPanel", () => {
     expect((textarea as HTMLTextAreaElement).value).toBe("");
   });
 
-  it("renders user and assistant messages with classification labels", () => {
+  it("renders answer classification with grounded guidance", () => {
     render(
       <AnalystChatPanel
         onSubmitQuestion={vi.fn()}
@@ -52,6 +52,47 @@ describe("AnalystChatPanel", () => {
     expect(screen.getByText("Assistant")).toBeInTheDocument();
     expect(screen.getByText("Answer")).toBeInTheDocument();
     expect(screen.getByText(/responsive support/i)).toBeInTheDocument();
+    expect(screen.getByText(/grounded answer from ingested reviews/i)).toBeInTheDocument();
+  });
+
+  it("renders out-of-scope classification distinctly", () => {
+    render(
+      <AnalystChatPanel
+        onSubmitQuestion={vi.fn()}
+        messages={[
+          {
+            id: "m2",
+            role: "assistant",
+            content: "I cannot answer this because it is outside the ingested review scope.",
+            state: "complete",
+            finalClassification: "out_of_scope",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Out of scope")).toBeInTheDocument();
+    expect(screen.getByText(/outside the currently ingested review scope/i)).toBeInTheDocument();
+  });
+
+  it("renders insufficient-evidence classification distinctly", () => {
+    render(
+      <AnalystChatPanel
+        onSubmitQuestion={vi.fn()}
+        messages={[
+          {
+            id: "m3",
+            role: "assistant",
+            content: "I need more review evidence before answering this confidently.",
+            state: "complete",
+            finalClassification: "insufficient_evidence",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Insufficient evidence")).toBeInTheDocument();
+    expect(screen.getByText(/not enough evidence found in the ingested reviews/i)).toBeInTheDocument();
   });
 
   it("shows loading state and disables composer while responding", () => {

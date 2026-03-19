@@ -55,6 +55,42 @@ function classificationLabel(classification: ChatFinalClassification | undefined
   return "";
 }
 
+type ClassificationPresentation = {
+  cardClassName: string;
+  badgeClassName: string;
+  guidance: string;
+};
+
+function classificationPresentation(
+  classification: ChatFinalClassification | undefined,
+): ClassificationPresentation | null {
+  if (classification === "answer") {
+    return {
+      cardClassName: "border-emerald-300/60 bg-emerald-50/40",
+      badgeClassName: "bg-emerald-100 text-emerald-800",
+      guidance: "Grounded answer from ingested reviews.",
+    };
+  }
+
+  if (classification === "out_of_scope") {
+    return {
+      cardClassName: "border-amber-300/70 bg-amber-50/50",
+      badgeClassName: "bg-amber-100 text-amber-900",
+      guidance: "Refusal: this question is outside the currently ingested review scope.",
+    };
+  }
+
+  if (classification === "insufficient_evidence") {
+    return {
+      cardClassName: "border-sky-300/70 bg-sky-50/50",
+      badgeClassName: "bg-sky-100 text-sky-900",
+      guidance: "Not enough evidence found in the ingested reviews to answer confidently.",
+    };
+  }
+
+  return null;
+}
+
 function ChatMessageList({ messages, isResponding }: { messages: ChatMessage[]; isResponding: boolean }): ReactNode {
   const endOfListRef = useRef<HTMLDivElement | null>(null);
 
@@ -78,19 +114,34 @@ function ChatMessageList({ messages, isResponding }: { messages: ChatMessage[]; 
       {messages.map((message) => {
         const isUser = message.role === "user";
         const classification = classificationLabel(message.finalClassification);
+        const presentation = classificationPresentation(message.finalClassification);
         return (
           <article
             key={message.id}
             className={[
               "rounded-md border p-2",
-              isUser ? "border-primary/30 bg-primary/5" : "border-border/70 bg-muted/20",
+              isUser ? "border-primary/30 bg-primary/5" : presentation?.cardClassName ?? "border-border/70 bg-muted/20",
             ].join(" ")}
           >
             <div className="mb-1 flex items-center justify-between gap-2">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{roleLabel(message.role)}</p>
-              {classification ? <span className="text-[11px] text-muted-foreground">{classification}</span> : null}
+              {classification ? (
+                <span
+                  className={[
+                    "rounded-full px-2 py-0.5 text-[11px] font-medium",
+                    presentation?.badgeClassName ?? "bg-muted text-muted-foreground",
+                  ].join(" ")}
+                >
+                  {classification}
+                </span>
+              ) : null}
             </div>
             <p className="text-sm text-foreground whitespace-pre-wrap">{message.content}</p>
+            {!isUser && presentation ? (
+              <p className="mt-2 text-xs text-muted-foreground" aria-label="Classification guidance">
+                {presentation.guidance}
+              </p>
+            ) : null}
             {message.state === "streaming" ? (
               <p className="mt-1 text-[11px] text-muted-foreground" aria-label="Message streaming state">
                 Streaming...

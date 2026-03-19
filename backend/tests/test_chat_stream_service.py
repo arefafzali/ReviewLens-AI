@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from app.llm.base import LLMChatResult, LLMMessage, LLMStreamChunk
 from app.schemas.chat import ChatClassification
-from app.services.chat.chat_stream_service import ChatStreamService, classify_response
+from app.services.chat.chat_stream_service import ChatStreamService, classify_response, format_sse_event
 
 
 class _NonFakeRetryProvider:
@@ -161,3 +161,10 @@ def test_stream_answer_uses_deterministic_fallback_when_retry_still_insufficient
     text = "".join(tokens).strip()
     assert text.startswith("Based on retrieved reviews in the requested period")
     assert "[E1]" in text
+
+
+def test_format_sse_event_uses_real_line_delimiters() -> None:
+    event = format_sse_event("token", {"text": "hello"})
+    assert event.startswith("event: token\n")
+    assert "data: {\"text\": \"hello\"}\n\n" in event
+    assert "\\n" not in event

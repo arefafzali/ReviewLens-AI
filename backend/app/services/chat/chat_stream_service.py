@@ -199,7 +199,7 @@ def classify_response(text: str) -> ChatClassification:
 
 def format_sse_event(event: str, payload: dict[str, Any]) -> str:
     data = json.dumps(payload, ensure_ascii=True)
-    return f"event: {event}\\ndata: {data}\\n\\n"
+    return f"event: {event}\ndata: {data}\n\n"
 
 
 def _split_tokens_for_stream(text: str) -> list[str]:
