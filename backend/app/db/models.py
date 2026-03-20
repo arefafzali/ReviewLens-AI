@@ -34,7 +34,7 @@ class Product(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
-    platform: Mapped[str] = mapped_column(String(50), default="capterra", nullable=False)
+    platform: Mapped[str] = mapped_column(String(50), default="generic_source", nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     source_url: Mapped[str] = mapped_column(Text, nullable=False)
     stats: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
@@ -111,3 +111,4 @@ class ChatMessage(Base):
     is_refusal: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     message_metadata: Mapped[dict] = mapped_column("metadata", JSON, default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+

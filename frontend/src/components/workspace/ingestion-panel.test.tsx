@@ -167,7 +167,7 @@ describe("IngestionPanel", () => {
     render(<IngestionPanel />);
 
     fireEvent.change(screen.getByLabelText(/review page url/i), {
-      target: { value: "https://www.capterra.com/p/147795/Coveragebook-com/reviews/" },
+      target: { value: "https://www.reviews.example.com/p/147795/Coveragebook-com/reviews/" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Run URL Ingestion" }));
 
@@ -187,7 +187,7 @@ describe("IngestionPanel", () => {
     render(<IngestionPanel />);
 
     fireEvent.change(screen.getByLabelText(/review page url/i), {
-      target: { value: "https://www.capterra.com/p/147795/Coveragebook-com/reviews/" },
+      target: { value: "https://www.reviews.example.com/p/147795/Coveragebook-com/reviews/" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Run URL Ingestion" }));
 
@@ -195,3 +195,4 @@ describe("IngestionPanel", () => {
     expect(alert).toHaveTextContent(/ingestion pipeline failed after retries/i);
   });
 });
+

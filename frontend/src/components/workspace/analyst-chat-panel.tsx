@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import type { FormEvent, ReactNode } from "react";
+import type { FormEvent, KeyboardEvent, ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ChatCitationItem } from "@/types/api";
@@ -113,6 +113,7 @@ function CitationList({ citations }: { citations: ChatCitationItem[] }): ReactNo
   if (citations.length === 0) {
     return null;
   }
+
 
   return (
     <section className="mt-3 space-y-2" aria-label="Supporting review evidence">
@@ -265,6 +266,25 @@ function ChatComposer({ disabled, isResponding, onSubmitQuestion, onCancelRespon
     setDraft("");
   }
 
+
+  function handleDraftKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void {
+    if (event.key !== "Enter") {
+      return;
+    }
+    if (event.shiftKey) {
+      return;
+    }
+    event.preventDefault();
+
+    const trimmed = draft.trim();
+    if (!trimmed || disabled || isResponding) {
+      return;
+    }
+
+    onSubmitQuestion(trimmed);
+    setDraft("");
+  }
+
   return (
     <form className="space-y-2" onSubmit={submitQuestion}>
       <label htmlFor="analyst-chat-question" className="text-sm font-medium text-foreground">
@@ -274,6 +294,7 @@ function ChatComposer({ disabled, isResponding, onSubmitQuestion, onCancelRespon
         id="analyst-chat-question"
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={handleDraftKeyDown}
         rows={3}
         disabled={disabled || isResponding}
         placeholder={disabled ? "Complete ingestion first to unlock chat." : "What are users saying about onboarding?"}

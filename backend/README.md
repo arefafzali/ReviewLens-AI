@@ -222,7 +222,7 @@ python scripts/verify_sample_urls.py
 
 The script validates:
 
-- https://www.capterra.com/p/164876/PressPage/reviews/
+- https://www.reviews.example.com/p/164876/PressPage/reviews/
 - https://www.amazon.ca/product-reviews/B07SZ9FFT9/ref=cm_cr_dp_d_show_all_btm
 
 ## Test
@@ -262,3 +262,4 @@ From Docker container:
 ```bash
 docker compose exec backend alembic upgrade head
 ```
+

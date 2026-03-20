@@ -16,7 +16,7 @@ from app.config import get_settings
 from app.schemas.ingestion import IngestionOutcomeCode, IngestionRunStatus
 from app.services.ingestion.url_pipeline import URLIngestionPipelineResult
 
-CAPTERRA_PRESSPAGE_REVIEWS_URL = "https://www.capterra.com/p/164876/PressPage/reviews/"
+SAMPLE_SOURCE_PRESSPAGE_REVIEWS_URL = "https://www.reviews.example.com/p/164876/PressPage/reviews/"
 
 
 def _seed_workspace_and_product(session: Session) -> tuple[str, str]:
@@ -28,9 +28,9 @@ def _seed_workspace_and_product(session: Session) -> tuple[str, str]:
         Product(
             id=product_id,
             workspace_id=workspace_id,
-            platform="capterra",
+            platform="generic_source",
             name="API Product",
-            source_url="https://www.capterra.com/p/api-product",
+            source_url="https://www.reviews.example.com/p/api-product",
         )
     )
     session.commit()
@@ -63,7 +63,7 @@ def test_ingestion_url_endpoint_returns_structured_result() -> None:
                 message="Ingestion completed successfully.",
                 warnings=[],
                 error_detail=None,
-                diagnostics={"provider": "firecrawl", "source": "capterra"},
+                diagnostics={"provider": "firecrawl", "source": "generic_source"},
             )
 
     app.dependency_overrides.clear()
@@ -89,7 +89,7 @@ def test_ingestion_url_endpoint_returns_structured_result() -> None:
                 json={
                     "workspace_id": workspace_id,
                     "product_id": product_id,
-                    "target_url": CAPTERRA_PRESSPAGE_REVIEWS_URL,
+                    "target_url": SAMPLE_SOURCE_PRESSPAGE_REVIEWS_URL,
                 },
             )
     finally:
@@ -228,7 +228,7 @@ def test_ingestion_url_endpoint_resolves_workspace_from_cookie() -> None:
                 message="Ingestion completed successfully.",
                 warnings=[],
                 error_detail=None,
-                diagnostics={"provider": "firecrawl", "source": "capterra"},
+                diagnostics={"provider": "firecrawl", "source": "generic_source"},
             )
 
     app.dependency_overrides.clear()
@@ -254,7 +254,7 @@ def test_ingestion_url_endpoint_resolves_workspace_from_cookie() -> None:
                 "/ingestion/url",
                 json={
                     "product_id": product_id,
-                    "target_url": CAPTERRA_PRESSPAGE_REVIEWS_URL,
+                    "target_url": SAMPLE_SOURCE_PRESSPAGE_REVIEWS_URL,
                 },
             )
     finally:
@@ -264,3 +264,4 @@ def test_ingestion_url_endpoint_resolves_workspace_from_cookie() -> None:
     payload = response.json()
     assert payload["status"] == "success"
     assert payload["captured_reviews"] == 3
+

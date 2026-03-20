@@ -26,7 +26,7 @@ from app.services.ingestion.url_pipeline import URLIngestionPipelineResult
 from app.services.ingestion_service import IngestionOrchestrationService
 from app.services.retrieval_service import ReviewRetrievalService
 
-CAPTERRA_URL = "https://www.capterra.com/p/164876/PressPage/reviews/"
+SAMPLE_SOURCE_URL = "https://www.reviews.example.com/p/164876/PressPage/reviews/"
 
 
 def _setup_db() -> Session:
@@ -49,9 +49,9 @@ def _seed_workspace_and_product(db: Session) -> tuple[uuid.UUID, uuid.UUID]:
         Product(
             id=product_id,
             workspace_id=workspace_id,
-            platform="capterra",
+            platform="generic_source",
             name="Presspage",
-            source_url=CAPTERRA_URL,
+            source_url=SAMPLE_SOURCE_URL,
         )
     )
     db.commit()
@@ -91,7 +91,7 @@ class _FixturePipeline:
             message="Ingestion completed successfully.",
             warnings=[],
             error_detail=None,
-            diagnostics={"provider": "firecrawl", "source_host": "www.capterra.com"},
+            diagnostics={"provider": "firecrawl", "source_host": "www.reviews.example.com"},
             extracted_reviews=self._extracted_reviews,
         )
 
@@ -100,7 +100,7 @@ def test_url_ingestion_fixture_flow_covers_dedupe_analytics_and_retrieval(monkey
     db = _setup_db()
     workspace_id, product_id = _seed_workspace_and_product(db)
 
-    extracted_payload = read_fixture_json("json/capterra_extracted_reviews_sample.json")
+    extracted_payload = read_fixture_json("json/generic_source_extracted_reviews_sample.json")
     extracted_reviews = list(extracted_payload["reviews"])
 
     monkeypatch.setattr(
@@ -113,7 +113,7 @@ def test_url_ingestion_fixture_flow_covers_dedupe_analytics_and_retrieval(monkey
         URLIngestionRequest(
             workspace_id=workspace_id,
             product_id=product_id,
-            target_url=CAPTERRA_URL,
+            target_url=SAMPLE_SOURCE_URL,
             reload=True,
         )
     )
@@ -148,8 +148,8 @@ def test_csv_ingestion_fixture_flow_covers_aliases_and_dedup(read_fixture_text) 
         CSVIngestionRequest(
             workspace_id=workspace_id,
             product_id=product_id,
-            source_ref="https://fixture.local/capterra-upload.csv",
-            csv_content=read_fixture_text("csv/capterra_presspage_reviews_sample.csv"),
+            source_ref="https://fixture.local/generic_source-upload.csv",
+            csv_content=read_fixture_text("csv/generic_source_presspage_reviews_sample.csv"),
         )
     )
 
@@ -196,8 +196,8 @@ def test_chat_stream_endpoint_with_fake_provider_uses_fixture_seeded_reviews(mon
         CSVIngestionRequest(
             workspace_id=workspace_id,
             product_id=product_id,
-            source_ref="https://fixture.local/capterra-upload.csv",
-            csv_content=read_fixture_text("csv/capterra_presspage_reviews_sample.csv"),
+            source_ref="https://fixture.local/generic_source-upload.csv",
+            csv_content=read_fixture_text("csv/generic_source_presspage_reviews_sample.csv"),
         )
     )
     seed_db.close()
@@ -233,3 +233,4 @@ def test_chat_stream_endpoint_with_fake_provider_uses_fixture_seeded_reviews(mon
     assert done_event["data"]["classification"] == "answer"
     assert len(citations_event["data"]["items"]) >= 1
     assert "onboarding" in done_event["data"]["answer"].lower()
+

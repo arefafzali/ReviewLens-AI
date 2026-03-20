@@ -52,9 +52,9 @@ def _seed_context(db: Session, *, with_review: bool = True) -> tuple[str, str]:
         Product(
             id=product_id,
             workspace_id=workspace_id,
-            platform="capterra",
+            platform="generic_source",
             name="PressPage",
-            source_url="https://www.capterra.com/p/164876/PressPage/reviews/",
+            source_url="https://www.reviews.example.com/p/164876/PressPage/reviews/",
             stats={"total_reviews": 1, "average_rating": 4.8},
         )
     )
@@ -64,7 +64,7 @@ def _seed_context(db: Session, *, with_review: bool = True) -> tuple[str, str]:
             Review(
                 workspace_id=workspace_id,
                 product_id=product_id,
-                source_platform="capterra",
+                source_platform="generic_source",
                 review_fingerprint="r1",
                 title="Fast onboarding",
                 body="Onboarding was fast and support was helpful.",
@@ -417,3 +417,4 @@ def test_chat_history_resolves_workspace_from_cookie() -> None:
 
     app.dependency_overrides.clear()
     verify_db.close()
+

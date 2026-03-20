@@ -9,9 +9,9 @@ INSERT INTO products (id, workspace_id, platform, name, source_url)
 VALUES (
   '22222222-2222-2222-2222-222222222222',
   '11111111-1111-1111-1111-111111111111',
-  'capterra',
+  'generic_source',
   'Local Seed Product',
-  'https://www.capterra.com/p/seed-product'
+  'https://www.reviews.example.com/p/seed-product'
 )
 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, updated_at = now();
 
@@ -22,7 +22,7 @@ VALUES (
   '22222222-2222-2222-2222-222222222222',
   'scrape',
   'success',
-  'https://www.capterra.com/p/seed-product/reviews',
+  'https://www.reviews.example.com/p/seed-product/reviews',
   now(),
   now()
 )
@@ -48,7 +48,7 @@ VALUES (
   '11111111-1111-1111-1111-111111111111',
   '22222222-2222-2222-2222-222222222222',
   '33333333-3333-3333-3333-333333333333',
-  'capterra',
+  'generic_source',
   'seed-review-1',
   'seed-fingerprint-1',
   'Great support and reporting',
@@ -60,3 +60,4 @@ VALUES (
 )
 ON CONFLICT (workspace_id, product_id, source_platform, review_fingerprint)
 DO UPDATE SET body = EXCLUDED.body, updated_at = now();
+

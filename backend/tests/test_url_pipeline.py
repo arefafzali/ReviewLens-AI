@@ -41,7 +41,7 @@ class _SuccessNoReviewsFetcher(PublicUrlFetcher):
 def test_pipeline_classifies_blocked_fetch_with_diagnostics() -> None:
     pipeline = URLIngestionPipeline(fetcher=_BlockedFetcher())
 
-    result = pipeline.run("https://www.capterra.com/p/164876/PressPage/reviews/")
+    result = pipeline.run("https://www.reviews.example.com/p/164876/PressPage/reviews/")
 
     assert result.status.value == "failed"
     assert result.outcome_code.value == "blocked"
@@ -65,3 +65,4 @@ def test_pipeline_handles_unknown_host_with_gpt_chunk_extraction(monkeypatch) ->
     assert result.diagnostics["source_host"] == "www.g2.com"
     assert result.diagnostics["parser"] == "gpt_markdown_chunks"
     assert result.diagnostics["gpt_extracted_reviews"] == 0
+

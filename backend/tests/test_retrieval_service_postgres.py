@@ -43,7 +43,7 @@ def test_postgres_retrieval_prefers_phrase_match_and_scope() -> None:
             Product(
                 id=product_a,
                 workspace_id=workspace_id,
-                platform="capterra",
+                platform="generic_source",
                 name="Product A",
                 source_url="https://example.com/a/reviews",
             )
@@ -52,7 +52,7 @@ def test_postgres_retrieval_prefers_phrase_match_and_scope() -> None:
             Product(
                 id=product_b,
                 workspace_id=workspace_id,
-                platform="capterra",
+                platform="generic_source",
                 name="Product B",
                 source_url="https://example.com/b/reviews",
             )
@@ -63,7 +63,7 @@ def test_postgres_retrieval_prefers_phrase_match_and_scope() -> None:
                 Review(
                     workspace_id=workspace_id,
                     product_id=product_a,
-                    source_platform="capterra",
+                    source_platform="generic_source",
                     review_fingerprint=f"{workspace_id}-a1",
                     title="Exact phrase candidate",
                     body="Customer support and onboarding were excellent.",
@@ -73,7 +73,7 @@ def test_postgres_retrieval_prefers_phrase_match_and_scope() -> None:
                 Review(
                     workspace_id=workspace_id,
                     product_id=product_a,
-                    source_platform="capterra",
+                    source_platform="generic_source",
                     review_fingerprint=f"{workspace_id}-a2",
                     title="Separated words",
                     body="Our customers are happy and support docs are clear.",
@@ -83,7 +83,7 @@ def test_postgres_retrieval_prefers_phrase_match_and_scope() -> None:
                 Review(
                     workspace_id=workspace_id,
                     product_id=product_b,
-                    source_platform="capterra",
+                    source_platform="generic_source",
                     review_fingerprint=f"{workspace_id}-b1",
                     title="Other product",
                     body="Customer support themes for another product.",
@@ -126,3 +126,4 @@ def test_postgres_retrieval_prefers_phrase_match_and_scope() -> None:
         session.query(Workspace).filter(Workspace.id == workspace_id).delete()
         session.commit()
         session.close()
+

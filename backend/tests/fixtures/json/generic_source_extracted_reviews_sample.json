@@ -6,7 +6,7 @@
       "rating": "5",
       "author": "Operations Manager",
       "date": "2026-02-11",
-      "url": "https://www.capterra.com/reviews/1001"
+      "url": "https://www.reviews.example.com/reviews/1001"
     },
     {
       "title": "Great workflow automation",
@@ -14,7 +14,7 @@
       "rating": "4",
       "author": "Comms Specialist",
       "date": "2026-02-20",
-      "url": "https://www.capterra.com/reviews/1002"
+      "url": "https://www.reviews.example.com/reviews/1002"
     },
     {
       "title": "Great workflow automation duplicate",
@@ -22,7 +22,7 @@
       "rating": "4",
       "author": "Comms Specialist",
       "date": "2026-02-20",
-      "url": "https://www.capterra.com/reviews/1002"
+      "url": "https://www.reviews.example.com/reviews/1002"
     },
     {
       "title": "Reliable analytics visibility",
@@ -30,7 +30,8 @@
       "rating": "4.5",
       "author": "PR Analyst",
       "date": "2026-03-02",
-      "url": "https://www.capterra.com/reviews/1003"
+      "url": "https://www.reviews.example.com/reviews/1003"
     }
   ]
 }
+

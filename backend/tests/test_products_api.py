@@ -55,9 +55,9 @@ def _seed_product_with_dependents(session: Session, workspace_id: uuid.UUID, *, 
         Product(
             id=product_id,
             workspace_id=workspace_id,
-            platform="capterra",
+            platform="generic_source",
             name=name,
-            source_url="https://www.capterra.com/p/example/reviews/",
+            source_url="https://www.reviews.example.com/p/example/reviews/",
             stats={"total_reviews": 2, "average_rating": 4.5},
             created_at=now,
             updated_at=now,
@@ -88,7 +88,7 @@ def _seed_product_with_dependents(session: Session, workspace_id: uuid.UUID, *, 
                 workspace_id=workspace_id,
                 product_id=product_id,
                 ingestion_run_id=run_id,
-                source_platform="capterra",
+                source_platform="generic_source",
                 review_fingerprint=f"fp-{product_id}",
                 body="Great support and easy onboarding.",
                 rating=4.5,
@@ -292,3 +292,4 @@ def test_products_cookie_isolation_smoke_with_cookie_issuance_and_reuse() -> Non
 
     app.dependency_overrides.clear()
     verify_db.close()
+

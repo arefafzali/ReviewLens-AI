@@ -29,7 +29,7 @@ def upgrade() -> None:
         "products",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, nullable=False, server_default=sa.text("gen_random_uuid()")),
         sa.Column("workspace_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("platform", sa.String(length=50), nullable=False, server_default="capterra"),
+        sa.Column("platform", sa.String(length=50), nullable=False, server_default="generic_source"),
         sa.Column("external_product_id", sa.String(length=255), nullable=True),
         sa.Column("name", sa.String(length=255), nullable=False),
         sa.Column("source_url", sa.Text(), nullable=False),
@@ -68,7 +68,7 @@ def upgrade() -> None:
         sa.Column("workspace_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("product_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("ingestion_run_id", postgresql.UUID(as_uuid=True), nullable=True),
-        sa.Column("source_platform", sa.String(length=50), nullable=False, server_default="capterra"),
+        sa.Column("source_platform", sa.String(length=50), nullable=False, server_default="generic_source"),
         sa.Column("source_review_id", sa.String(length=255), nullable=True),
         sa.Column("review_fingerprint", sa.String(length=64), nullable=False),
         sa.Column("title", sa.Text(), nullable=True),
@@ -170,3 +170,4 @@ def downgrade() -> None:
     op.drop_table("products")
 
     op.drop_table("workspaces")
+

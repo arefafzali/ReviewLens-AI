@@ -51,7 +51,7 @@ def test_context_ensure_creates_workspace_and_product() -> None:
                 "product_id": product_id,
                 "platform": "generic",
                 "product_name": "CoverageBook",
-                "source_url": "https://www.capterra.com/p/147795/Coveragebook-com/reviews/",
+                "source_url": "https://www.reviews.example.com/p/147795/Coveragebook-com/reviews/",
             },
         )
 
@@ -173,3 +173,4 @@ def test_context_ensure_sets_workspace_cookie_when_workspace_id_is_missing() -> 
     assert verify_session.query(Workspace).filter(Workspace.id == workspace_uuid).count() == 1
     assert verify_session.query(Product).filter(Product.id == product_uuid).count() == 1
     verify_session.close()
+

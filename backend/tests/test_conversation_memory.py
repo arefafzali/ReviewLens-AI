@@ -27,9 +27,9 @@ def _seed_context(db: Session) -> tuple[uuid.UUID, uuid.UUID]:
         Product(
             id=product_id,
             workspace_id=workspace_id,
-            platform="capterra",
+            platform="generic_source",
             name="Memory Product",
-            source_url="https://www.capterra.com/p/164876/PressPage/reviews/",
+            source_url="https://www.reviews.example.com/p/164876/PressPage/reviews/",
         )
     )
     db.commit()
@@ -149,3 +149,4 @@ def test_followup_question_can_use_recent_window_context() -> None:
     transcript = "\n".join(item.content for item in window.recent_messages)
     assert "onboarding" in transcript.lower()
     assert "implementation support" in transcript.lower()
+

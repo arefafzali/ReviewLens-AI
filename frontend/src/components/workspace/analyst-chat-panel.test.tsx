@@ -278,4 +278,28 @@ describe("AnalystChatPanel", () => {
     expect(screen.queryByText(/analyzing ingested reviews/i)).not.toBeInTheDocument();
     expect(screen.getByLabelText(/message streaming state/i)).toBeInTheDocument();
   });
+
+  it("submits the question when pressing Enter", () => {
+    const onSubmitQuestion = vi.fn();
+    render(<AnalystChatPanel messages={[]} onSubmitQuestion={onSubmitQuestion} />);
+
+    const textarea = screen.getByLabelText(/ask a question/i);
+    fireEvent.change(textarea, { target: { value: "What changed in sentiment this month?" } });
+    fireEvent.keyDown(textarea, { key: "Enter", code: "Enter", charCode: 13 });
+
+    expect(onSubmitQuestion).toHaveBeenCalledTimes(1);
+    expect(onSubmitQuestion).toHaveBeenCalledWith("What changed in sentiment this month?");
+    expect((textarea as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("keeps multiline editing when pressing Shift+Enter", () => {
+    const onSubmitQuestion = vi.fn();
+    render(<AnalystChatPanel messages={[]} onSubmitQuestion={onSubmitQuestion} />);
+
+    const textarea = screen.getByLabelText(/ask a question/i);
+    fireEvent.change(textarea, { target: { value: "Line one" } });
+    fireEvent.keyDown(textarea, { key: "Enter", code: "Enter", charCode: 13, shiftKey: true });
+
+    expect(onSubmitQuestion).not.toHaveBeenCalled();
+  });
 });

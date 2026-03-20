@@ -20,7 +20,7 @@ from app.schemas.ingestion import (
 from app.services.ingestion_service import IngestionOrchestrationService
 from app.services.ingestion.url_pipeline import URLIngestionPipelineResult
 
-CAPTERRA_PRESSPAGE_REVIEWS_URL = "https://www.capterra.com/p/164876/PressPage/reviews/"
+SAMPLE_SOURCE_PRESSPAGE_REVIEWS_URL = "https://www.reviews.example.com/p/164876/PressPage/reviews/"
 
 
 def _setup_db() -> Session:
@@ -43,9 +43,9 @@ def _seed_workspace_and_product(db: Session) -> tuple[uuid.UUID, uuid.UUID]:
         Product(
             id=product_id,
             workspace_id=workspace_id,
-            platform="capterra",
+            platform="generic_source",
             name="Test Product",
-            source_url="https://www.capterra.com/p/test-product",
+            source_url="https://www.reviews.example.com/p/test-product",
         )
     )
     db.commit()
@@ -85,7 +85,7 @@ def test_url_ingestion_success_persists_final_state(monkeypatch) -> None:
                 message="Ingestion completed successfully.",
                 warnings=[],
                 error_detail=None,
-                diagnostics={"provider": "firecrawl", "source": "capterra"},
+                diagnostics={"provider": "firecrawl", "source": "generic_source"},
             )
         ),
     )
@@ -94,7 +94,7 @@ def test_url_ingestion_success_persists_final_state(monkeypatch) -> None:
         URLIngestionRequest(
             workspace_id=workspace_id,
             product_id=product_id,
-            target_url=CAPTERRA_PRESSPAGE_REVIEWS_URL,
+            target_url=SAMPLE_SOURCE_PRESSPAGE_REVIEWS_URL,
         )
     )
 
@@ -124,7 +124,7 @@ def test_url_ingestion_partial_low_data_is_modeled(monkeypatch) -> None:
                 message="Ingestion completed with limited captured reviews.",
                 warnings=["Low review count detected."],
                 error_detail=None,
-                diagnostics={"provider": "firecrawl", "source": "capterra"},
+                diagnostics={"provider": "firecrawl", "source": "generic_source"},
             )
         ),
     )
@@ -133,7 +133,7 @@ def test_url_ingestion_partial_low_data_is_modeled(monkeypatch) -> None:
         URLIngestionRequest(
             workspace_id=workspace_id,
             product_id=product_id,
-            target_url=CAPTERRA_PRESSPAGE_REVIEWS_URL,
+            target_url=SAMPLE_SOURCE_PRESSPAGE_REVIEWS_URL,
         )
     )
 
@@ -142,7 +142,7 @@ def test_url_ingestion_partial_low_data_is_modeled(monkeypatch) -> None:
     assert result.captured_reviews == 1
     assert "limited captured reviews" in result.message.lower()
     assert result.warnings
-    assert result.diagnostics["source"] == "capterra"
+    assert result.diagnostics["source"] == "generic_source"
     assert result.ingestion_run_id
     assert result.started_at is not None
     assert result.completed_at is not None
@@ -247,7 +247,7 @@ def test_url_ingestion_persists_extracted_reviews_rows(monkeypatch) -> None:
                 message="Ingestion completed successfully.",
                 warnings=[],
                 error_detail=None,
-                diagnostics={"provider": "firecrawl", "source_host": "www.capterra.com"},
+                diagnostics={"provider": "firecrawl", "source_host": "www.reviews.example.com"},
                 extracted_reviews=[
                     {
                         "title": "Great",
@@ -282,7 +282,7 @@ def test_url_ingestion_persists_extracted_reviews_rows(monkeypatch) -> None:
         URLIngestionRequest(
             workspace_id=workspace_id,
             product_id=product_id,
-            target_url=CAPTERRA_PRESSPAGE_REVIEWS_URL,
+            target_url=SAMPLE_SOURCE_PRESSPAGE_REVIEWS_URL,
         )
     )
 
@@ -304,13 +304,13 @@ def test_url_ingestion_uses_cache_when_reviews_already_stored(monkeypatch) -> No
         workspace_id=workspace_id,
         product_id=product_id,
         source_type=IngestionSourceType.SCRAPE,
-        source_ref=CAPTERRA_PRESSPAGE_REVIEWS_URL,
+        source_ref=SAMPLE_SOURCE_PRESSPAGE_REVIEWS_URL,
     )
     inserted = repository.persist_extracted_reviews(
         workspace_id=workspace_id,
         product_id=product_id,
         ingestion_run_id=previous_run.id,
-        source_host="www.capterra.com",
+        source_host="www.reviews.example.com",
         reviews=[
             {
                 "title": "Great",
@@ -330,7 +330,7 @@ def test_url_ingestion_uses_cache_when_reviews_already_stored(monkeypatch) -> No
         captured_reviews=1,
         message="Ingestion completed successfully.",
         warnings=[],
-        diagnostics={"provider": "firecrawl", "source_host": "www.capterra.com", "parser": "gpt_markdown_chunks"},
+        diagnostics={"provider": "firecrawl", "source_host": "www.reviews.example.com", "parser": "gpt_markdown_chunks"},
     )
 
     monkeypatch.setattr(
@@ -342,7 +342,7 @@ def test_url_ingestion_uses_cache_when_reviews_already_stored(monkeypatch) -> No
         URLIngestionRequest(
             workspace_id=workspace_id,
             product_id=product_id,
-            target_url=CAPTERRA_PRESSPAGE_REVIEWS_URL,
+            target_url=SAMPLE_SOURCE_PRESSPAGE_REVIEWS_URL,
         )
     )
 
@@ -365,13 +365,13 @@ def test_url_ingestion_cache_hit_uses_product_summary_when_latest_cached_run_has
         workspace_id=workspace_id,
         product_id=product_id,
         source_type=IngestionSourceType.SCRAPE,
-        source_ref=CAPTERRA_PRESSPAGE_REVIEWS_URL,
+        source_ref=SAMPLE_SOURCE_PRESSPAGE_REVIEWS_URL,
     )
     inserted = repository.persist_extracted_reviews(
         workspace_id=workspace_id,
         product_id=product_id,
         ingestion_run_id=first_run.id,
-        source_host="www.capterra.com",
+        source_host="www.reviews.example.com",
         reviews=[
             {
                 "title": "Great",
@@ -391,20 +391,20 @@ def test_url_ingestion_cache_hit_uses_product_summary_when_latest_cached_run_has
         captured_reviews=1,
         message="Initial ingestion completed successfully.",
         warnings=[],
-        diagnostics={"provider": "firecrawl", "source_host": "www.capterra.com", "parser": "gpt_markdown_chunks"},
+        diagnostics={"provider": "firecrawl", "source_host": "www.reviews.example.com", "parser": "gpt_markdown_chunks"},
     )
 
     duplicate_only_run = repository.create_attempt(
         workspace_id=workspace_id,
         product_id=product_id,
         source_type=IngestionSourceType.SCRAPE,
-        source_ref=CAPTERRA_PRESSPAGE_REVIEWS_URL,
+        source_ref=SAMPLE_SOURCE_PRESSPAGE_REVIEWS_URL,
     )
     duplicate_only_inserted = repository.persist_extracted_reviews(
         workspace_id=workspace_id,
         product_id=product_id,
         ingestion_run_id=duplicate_only_run.id,
-        source_host="www.capterra.com",
+        source_host="www.reviews.example.com",
         reviews=[
             {
                 "title": "Great",
@@ -424,7 +424,7 @@ def test_url_ingestion_cache_hit_uses_product_summary_when_latest_cached_run_has
         captured_reviews=1,
         message="Duplicate-only ingestion completed successfully.",
         warnings=[],
-        diagnostics={"provider": "firecrawl", "source_host": "www.capterra.com", "parser": "gpt_markdown_chunks"},
+        diagnostics={"provider": "firecrawl", "source_host": "www.reviews.example.com", "parser": "gpt_markdown_chunks"},
         summary_snapshot={},
     )
 
@@ -437,7 +437,7 @@ def test_url_ingestion_cache_hit_uses_product_summary_when_latest_cached_run_has
         URLIngestionRequest(
             workspace_id=workspace_id,
             product_id=product_id,
-            target_url=CAPTERRA_PRESSPAGE_REVIEWS_URL,
+            target_url=SAMPLE_SOURCE_PRESSPAGE_REVIEWS_URL,
         )
     )
 
@@ -459,13 +459,13 @@ def test_url_ingestion_reload_bypasses_cache_and_reextracts(monkeypatch) -> None
         workspace_id=workspace_id,
         product_id=product_id,
         source_type=IngestionSourceType.SCRAPE,
-        source_ref=CAPTERRA_PRESSPAGE_REVIEWS_URL,
+        source_ref=SAMPLE_SOURCE_PRESSPAGE_REVIEWS_URL,
     )
     repository.persist_extracted_reviews(
         workspace_id=workspace_id,
         product_id=product_id,
         ingestion_run_id=previous_run.id,
-        source_host="www.capterra.com",
+        source_host="www.reviews.example.com",
         reviews=[
             {
                 "title": "Cached",
@@ -484,7 +484,7 @@ def test_url_ingestion_reload_bypasses_cache_and_reextracts(monkeypatch) -> None
         captured_reviews=1,
         message="Ingestion completed successfully.",
         warnings=[],
-        diagnostics={"provider": "firecrawl", "source_host": "www.capterra.com", "parser": "gpt_markdown_chunks"},
+        diagnostics={"provider": "firecrawl", "source_host": "www.reviews.example.com", "parser": "gpt_markdown_chunks"},
     )
 
     monkeypatch.setattr(
@@ -497,7 +497,7 @@ def test_url_ingestion_reload_bypasses_cache_and_reextracts(monkeypatch) -> None
                 message="Ingestion completed successfully.",
                 warnings=[],
                 error_detail=None,
-                diagnostics={"provider": "firecrawl", "source_host": "www.capterra.com", "parser": "gpt_markdown_chunks"},
+                diagnostics={"provider": "firecrawl", "source_host": "www.reviews.example.com", "parser": "gpt_markdown_chunks"},
                 extracted_reviews=[
                     {
                         "title": "Fresh",
@@ -516,7 +516,7 @@ def test_url_ingestion_reload_bypasses_cache_and_reextracts(monkeypatch) -> None
         URLIngestionRequest(
             workspace_id=workspace_id,
             product_id=product_id,
-            target_url=CAPTERRA_PRESSPAGE_REVIEWS_URL,
+            target_url=SAMPLE_SOURCE_PRESSPAGE_REVIEWS_URL,
             reload=True,
         )
     )
@@ -575,7 +575,7 @@ def test_url_ingestion_invalid_llm_provider_config_is_modeled(monkeypatch) -> No
         URLIngestionRequest(
             workspace_id=workspace_id,
             product_id=product_id,
-            target_url=CAPTERRA_PRESSPAGE_REVIEWS_URL,
+            target_url=SAMPLE_SOURCE_PRESSPAGE_REVIEWS_URL,
         )
     )
 
@@ -583,3 +583,4 @@ def test_url_ingestion_invalid_llm_provider_config_is_modeled(monkeypatch) -> No
     assert result.outcome_code == IngestionOutcomeCode.PARSE_FAILED
     assert result.message == "Configured LLM provider is invalid."
     assert result.diagnostics["failure_stage"] == "llm_provider_config"
+

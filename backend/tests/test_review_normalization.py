@@ -17,8 +17,8 @@ def test_normalization_is_deterministic_for_same_payload() -> None:
         }
     ]
 
-    result_a = normalize_reviews_for_persistence(platform="capterra", reviews=payload)
-    result_b = normalize_reviews_for_persistence(platform="capterra", reviews=payload)
+    result_a = normalize_reviews_for_persistence(platform="generic_source", reviews=payload)
+    result_b = normalize_reviews_for_persistence(platform="generic_source", reviews=payload)
 
     assert len(result_a.normalized_reviews) == 1
     assert result_a.normalized_reviews[0].review_fingerprint == result_b.normalized_reviews[0].review_fingerprint
@@ -36,7 +36,7 @@ def test_normalization_uses_external_id_for_dedupe_when_present() -> None:
         },
     ]
 
-    result = normalize_reviews_for_persistence(platform="capterra", reviews=payload)
+    result = normalize_reviews_for_persistence(platform="generic_source", reviews=payload)
 
     assert len(result.normalized_reviews) == 1
     assert result.duplicates_in_payload == 1
@@ -53,7 +53,7 @@ def test_normalization_handles_missing_optional_fields() -> None:
         },
     ]
 
-    result = normalize_reviews_for_persistence(platform="capterra", reviews=payload)
+    result = normalize_reviews_for_persistence(platform="generic_source", reviews=payload)
 
     assert len(result.normalized_reviews) == 1
     record = result.normalized_reviews[0]
@@ -62,3 +62,4 @@ def test_normalization_handles_missing_optional_fields() -> None:
     assert record.reviewed_at is None
     assert record.rating is None
     assert result.skipped_missing_body == 1
+

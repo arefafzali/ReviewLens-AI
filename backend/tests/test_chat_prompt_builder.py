@@ -18,8 +18,8 @@ def _build_payload(*, question: str = "What do users say about onboarding?") -> 
         assistant_role="You are ReviewLens AI, an ORM analyst assistant.",
         product=ProductContext(
             product_name="PressPage",
-            platform="capterra",
-            source_url="https://www.capterra.com/p/164876/PressPage/reviews/",
+            platform="generic_source",
+            source_url="https://www.reviews.example.com/p/164876/PressPage/reviews/",
         ),
         ingestion=IngestionContext(
             ingestion_run_id="run-123",
@@ -58,8 +58,8 @@ def test_prompt_builder_includes_identity_context_and_evidence_sections() -> Non
     assert "[ASSISTANT_ROLE]" in result.system_prompt
     assert "[SELECTED_SCOPE]" in result.system_prompt
     assert "Product: PressPage" in result.system_prompt
-    assert "Platform: capterra" in result.system_prompt
-    assert "Canonical source URL: https://www.capterra.com/p/164876/PressPage/reviews/" in result.system_prompt
+    assert "Platform: generic_source" in result.system_prompt
+    assert "Canonical source URL: https://www.reviews.example.com/p/164876/PressPage/reviews/" in result.system_prompt
 
     assert "[RETRIEVED_EVIDENCE]" in result.system_prompt
     assert "E1" in result.system_prompt
@@ -110,3 +110,4 @@ def test_prompt_builder_preserves_user_question_in_user_prompt() -> None:
     assert "[USER_QUESTION]" in result.user_prompt
     assert "Compare this with G2 competitors" in result.user_prompt
     assert "Answer the user using the system rules above." in result.user_prompt
+

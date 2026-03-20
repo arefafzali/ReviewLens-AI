@@ -9,9 +9,9 @@ from app.services.ingestion.fetchers.firecrawl import FirecrawlFetcher
 
 
 def test_firecrawl_fetch_success_with_realistic_fixture(monkeypatch, read_fixture_text, read_fixture_json) -> None:
-    html_fixture = read_fixture_text("html/capterra_presspage_reviews_sample.html")
-    markdown_fixture = read_fixture_text("markdown/capterra_presspage_reviews_sample.md")
-    extracted_payload = read_fixture_json("json/capterra_extracted_reviews_sample.json")
+    html_fixture = read_fixture_text("html/generic_source_presspage_reviews_sample.html")
+    markdown_fixture = read_fixture_text("markdown/generic_source_presspage_reviews_sample.md")
+    extracted_payload = read_fixture_json("json/generic_source_extracted_reviews_sample.json")
 
     def fake_post(url, headers=None, json=None, timeout=None):
         return httpx.Response(
@@ -99,8 +99,8 @@ def test_firecrawl_fetch_surfaces_upstream_error(monkeypatch) -> None:
 
 
 def test_firecrawl_fetch_dedupes_same_body_author_from_fixture_payload(monkeypatch, read_fixture_text, read_fixture_json) -> None:
-    markdown_fixture = read_fixture_text("markdown/capterra_presspage_reviews_sample.md")
-    extracted_payload = read_fixture_json("json/capterra_extracted_reviews_sample.json")
+    markdown_fixture = read_fixture_text("markdown/generic_source_presspage_reviews_sample.md")
+    extracted_payload = read_fixture_json("json/generic_source_extracted_reviews_sample.json")
 
     def fake_post(url, headers=None, json=None, timeout=None):
         return httpx.Response(
@@ -128,3 +128,4 @@ def test_firecrawl_fetch_dedupes_same_body_author_from_fixture_payload(monkeypat
     assert result.ok is True
     assert result.metadata["gpt_extracted_reviews"] == 3
     assert "duplicate" not in (result.body or "").lower()
+

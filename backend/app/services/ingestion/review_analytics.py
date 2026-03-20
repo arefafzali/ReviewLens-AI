@@ -48,7 +48,7 @@ _STOPWORDS = {
     "reviews",
     "product",
     "platform",
-    "capterra",
+    "generic_source",
     "www",
     "http",
     "https",
@@ -155,3 +155,4 @@ def _rating_bucket(value: Decimal) -> int:
 def _extract_keywords(text: str) -> list[str]:
     tokens = [token for token in _TOKEN_RE.findall(text.lower()) if token not in _STOPWORDS]
     return tokens
+

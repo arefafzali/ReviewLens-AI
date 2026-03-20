@@ -9,7 +9,7 @@ import sys
 import httpx
 
 SAMPLE_URLS = [
-    "https://www.capterra.com/p/164876/PressPage/reviews/",
+    "https://www.reviews.example.com/p/164876/PressPage/reviews/",
     "https://www.amazon.ca/product-reviews/B07SZ9FFT9/ref=cm_cr_dp_d_show_all_btm",
 ]
 
@@ -50,3 +50,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
