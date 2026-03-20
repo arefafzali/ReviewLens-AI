@@ -13,6 +13,7 @@ from sqlalchemy.pool import StaticPool
 from app.db.base import Base
 from app.db.models import ChatMessage, ChatSession, IngestionRun, Product, Review, Workspace
 from app.db.session import get_db_session
+from app.config import get_settings
 
 
 def _build_app_with_db() -> tuple[TestClient, Session, object]:
@@ -217,6 +218,42 @@ def test_products_delete_returns_404_for_missing_workspace_product_pair() -> Non
         params={"workspace_id": str(workspace_id)},
     )
     assert response.status_code == 404
+
+    app.dependency_overrides.clear()
+    verify_db.close()
+
+
+def test_products_list_isolated_by_workspace_cookie_across_clients() -> None:
+    _client, verify_db, app = _build_app_with_db()
+    workspace_one = _seed_workspace(verify_db)
+    workspace_two = _seed_workspace(verify_db)
+
+    _seed_product_with_dependents(verify_db, workspace_one, name="Workspace One Product")
+    _seed_product_with_dependents(verify_db, workspace_two, name="Workspace Two Product")
+
+    cookie_name = get_settings().workspace_cookie_name
+
+    with TestClient(app) as client_one:
+        client_one.cookies.set(cookie_name, str(workspace_one))
+        response_one = client_one.get("/products")
+
+    with TestClient(app) as client_two:
+        client_two.cookies.set(cookie_name, str(workspace_two))
+        response_two = client_two.get("/products")
+
+    assert response_one.status_code == 200
+    assert response_two.status_code == 200
+
+    payload_one = response_one.json()
+    payload_two = response_two.json()
+
+    assert len(payload_one) == 1
+    assert payload_one[0]["workspace_id"] == str(workspace_one)
+    assert payload_one[0]["name"] == "Workspace One Product"
+
+    assert len(payload_two) == 1
+    assert payload_two[0]["workspace_id"] == str(workspace_two)
+    assert payload_two[0]["name"] == "Workspace Two Product"
 
     app.dependency_overrides.clear()
     verify_db.close()

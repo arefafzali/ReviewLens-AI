@@ -12,6 +12,7 @@ from sqlalchemy.pool import StaticPool
 from app.db.base import Base
 from app.db.models import Product, Workspace
 from app.db.session import get_db_session
+from app.config import get_settings
 from app.schemas.ingestion import IngestionOutcomeCode, IngestionRunStatus
 from app.services.ingestion.url_pipeline import URLIngestionPipelineResult
 
@@ -199,3 +200,67 @@ def test_ingestion_url_preflight_options_is_allowed() -> None:
 
     assert response.status_code == 200
     assert response.headers.get("access-control-allow-origin") == "http://localhost:3000"
+
+
+def test_ingestion_url_endpoint_resolves_workspace_from_cookie() -> None:
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        future=True,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    seed_session = Session(engine)
+    workspace_id, product_id = _seed_workspace_and_product(seed_session)
+    seed_session.close()
+    session_factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+    from app.main import create_app
+
+    app = create_app()
+
+    class _FakePipeline:
+        def run(self, _: str) -> URLIngestionPipelineResult:
+            return URLIngestionPipelineResult(
+                status=IngestionRunStatus.SUCCESS,
+                outcome_code=IngestionOutcomeCode.OK,
+                captured_reviews=3,
+                message="Ingestion completed successfully.",
+                warnings=[],
+                error_detail=None,
+                diagnostics={"provider": "firecrawl", "source": "capterra"},
+            )
+
+    app.dependency_overrides.clear()
+
+    import app.services.ingestion_service as ingestion_service_module
+
+    original_factory = ingestion_service_module.URLIngestionPipeline.with_firecrawl
+    ingestion_service_module.URLIngestionPipeline.with_firecrawl = classmethod(lambda cls, **_: _FakePipeline())
+
+    def override_db_session():
+        db = session_factory()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db_session] = override_db_session
+
+    try:
+        with TestClient(app) as client:
+            client.cookies.set(get_settings().workspace_cookie_name, workspace_id)
+            response = client.post(
+                "/ingestion/url",
+                json={
+                    "product_id": product_id,
+                    "target_url": CAPTERRA_PRESSPAGE_REVIEWS_URL,
+                },
+            )
+    finally:
+        ingestion_service_module.URLIngestionPipeline.with_firecrawl = original_factory
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "success"
+    assert payload["captured_reviews"] == 3

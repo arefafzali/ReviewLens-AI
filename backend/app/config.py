@@ -97,6 +97,37 @@ class Settings(BaseSettings):
         description="Maximum markdown chunks to send to GPT per URL.",
     )
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    workspace_cookie_name: str = Field(
+        default="reviewlens_workspace_id",
+        validation_alias=AliasChoices("REVIEWLENS_WORKSPACE_COOKIE_NAME"),
+        description="Cookie key used for anonymous workspace isolation.",
+    )
+    workspace_cookie_max_age_seconds: int = Field(
+        default=60 * 60 * 24 * 30,
+        validation_alias=AliasChoices("REVIEWLENS_WORKSPACE_COOKIE_MAX_AGE_SECONDS"),
+        ge=60,
+        description="Max age for workspace cookie in seconds.",
+    )
+    workspace_cookie_secure: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("REVIEWLENS_WORKSPACE_COOKIE_SECURE"),
+        description="Whether workspace cookie requires HTTPS transport.",
+    )
+    workspace_cookie_http_only: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("REVIEWLENS_WORKSPACE_COOKIE_HTTP_ONLY"),
+        description="Whether workspace cookie is HTTP-only.",
+    )
+    workspace_cookie_same_site: Literal["lax", "strict", "none"] = Field(
+        default="lax",
+        validation_alias=AliasChoices("REVIEWLENS_WORKSPACE_COOKIE_SAME_SITE"),
+        description="SameSite policy for workspace cookie.",
+    )
+    workspace_cookie_path: str = Field(
+        default="/",
+        validation_alias=AliasChoices("REVIEWLENS_WORKSPACE_COOKIE_PATH"),
+        description="Path scope for workspace cookie.",
+    )
 
     @field_validator("environment")
     @classmethod

@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.db.session import get_db_session
 from app.schemas.products import ProductDetailResponse, ProductIngestionSnapshot, ProductListItemResponse
 from app.services.products_service import ProductsService
+from app.services.workspace_context import resolve_workspace_id
 
 router = APIRouter(prefix="/products")
 
@@ -21,11 +23,22 @@ router = APIRouter(prefix="/products")
     description="Returns workspace-scoped products with summary metrics for dashboard/listing pages.",
 )
 def list_products(
-    workspace_id: UUID,
+    request: Request,
+    response: Response,
+    workspace_id: UUID | None = None,
     db: Session = Depends(get_db_session),
 ) -> list[ProductListItemResponse]:
+    settings = get_settings()
+    resolved_workspace_id = resolve_workspace_id(
+        db=db,
+        response=response,
+        settings=settings,
+        cookie_workspace_raw=request.cookies.get(settings.workspace_cookie_name),
+        requested_workspace_id=workspace_id,
+    )
+
     service = ProductsService(db)
-    projections = service.list_products(workspace_id=workspace_id)
+    projections = service.list_products(workspace_id=resolved_workspace_id)
     return [
         ProductListItemResponse(
             id=item.product.id,
@@ -56,11 +69,22 @@ def list_products(
 )
 def get_product(
     product_id: UUID,
-    workspace_id: UUID,
+    request: Request,
+    response: Response,
+    workspace_id: UUID | None = None,
     db: Session = Depends(get_db_session),
 ) -> ProductDetailResponse:
+    settings = get_settings()
+    resolved_workspace_id = resolve_workspace_id(
+        db=db,
+        response=response,
+        settings=settings,
+        cookie_workspace_raw=request.cookies.get(settings.workspace_cookie_name),
+        requested_workspace_id=workspace_id,
+    )
+
     service = ProductsService(db)
-    projection = service.get_product(workspace_id=workspace_id, product_id=product_id)
+    projection = service.get_product(workspace_id=resolved_workspace_id, product_id=product_id)
     if projection is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found for workspace.")
 
@@ -95,11 +119,23 @@ def get_product(
 )
 def delete_product(
     product_id: UUID,
-    workspace_id: UUID,
+    request: Request,
+    response: Response,
+    workspace_id: UUID | None = None,
     db: Session = Depends(get_db_session),
 ) -> Response:
+    settings = get_settings()
+    resolved_workspace_id = resolve_workspace_id(
+        db=db,
+        response=response,
+        settings=settings,
+        cookie_workspace_raw=request.cookies.get(settings.workspace_cookie_name),
+        requested_workspace_id=workspace_id,
+    )
+
     service = ProductsService(db)
-    deleted = service.delete_product(workspace_id=workspace_id, product_id=product_id)
+    deleted = service.delete_product(workspace_id=resolved_workspace_id, product_id=product_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found for workspace.")
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    response.status_code = status.HTTP_204_NO_CONTENT
+    return response

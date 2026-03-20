@@ -55,9 +55,9 @@ docker compose up --build backend db
 
 ## Product persistence APIs
 
-- `GET /products?workspace_id=<uuid>`
-- `GET /products/{id}?workspace_id=<uuid>`
-- `DELETE /products/{id}?workspace_id=<uuid>`
+- `GET /products` (optional `workspace_id` query override)
+- `GET /products/{id}` (optional `workspace_id` query override)
+- `DELETE /products/{id}` (optional `workspace_id` query override)
 
 Product APIs are workspace-aware and return summary fields suitable for dashboard/list
 and product detail pages, including:
@@ -70,9 +70,16 @@ and product detail pages, including:
 Delete semantics are productized for portal cleanup: deleting a product removes dependent
 reviews, chat sessions/messages, and ingestion runs for that workspace/product context.
 
-`POST /context/ensure` is an idempotent bootstrap endpoint used by the frontend
-to ensure `workspace_id` and `product_id` records exist before ingestion calls.
-This prevents foreign-key failures when browser-local IDs are first seen by the backend.
+Anonymous workspace isolation is cookie-based across all workspace-scoped endpoints.
+Server behavior:
+
+- If a valid workspace cookie exists, it is reused.
+- Else if `workspace_id` is provided, that ID is used.
+- Else a new workspace ID is generated.
+- In all cases, the workspace row is auto-created if missing and the cookie is set/refreshed.
+
+`POST /context/ensure` remains an idempotent bootstrap endpoint to ensure a
+workspace/product pair exists before ingestion calls.
 
 `POST /ingestion/url` supports cache control:
 
@@ -151,7 +158,7 @@ Conversation memory architecture:
 Streaming chat contract:
 
 - Endpoint: `POST /chat/stream`
-- Request: `workspace_id`, `product_id`, `question`, optional `chat_session_id`
+- Request: optional `workspace_id`, `product_id`, `question`, optional `chat_session_id`
 - Server workflow per request:
 	1. load recent bounded conversation history
 	2. retrieve product-scoped review evidence
@@ -186,6 +193,12 @@ Optional local tuning:
 - `REVIEWLENS_OPENAI_TIMEOUT_SECONDS` controls extraction request timeout.
 - `REVIEWLENS_MARKDOWN_CHUNK_SIZE_CHARS`, `REVIEWLENS_MARKDOWN_CHUNK_OVERLAP_CHARS`, and `REVIEWLENS_MARKDOWN_MAX_CHUNKS` tune chunking behavior.
 - `REVIEWLENS_CORS_ALLOW_ORIGINS` configures allowed browser origins for API access (comma-separated, e.g. `http://localhost:3000,http://127.0.0.1:3000`).
+- `REVIEWLENS_WORKSPACE_COOKIE_NAME` configures the workspace cookie key.
+- `REVIEWLENS_WORKSPACE_COOKIE_MAX_AGE_SECONDS` controls cookie lifetime.
+- `REVIEWLENS_WORKSPACE_COOKIE_SECURE` toggles HTTPS-only cookie transport.
+- `REVIEWLENS_WORKSPACE_COOKIE_HTTP_ONLY` toggles JavaScript access to the cookie.
+- `REVIEWLENS_WORKSPACE_COOKIE_SAME_SITE` sets cookie SameSite policy (`lax`, `strict`, `none`).
+- `REVIEWLENS_WORKSPACE_COOKIE_PATH` sets cookie path scope.
 
 ## Verify Required Sample URLs
 

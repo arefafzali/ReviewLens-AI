@@ -12,6 +12,7 @@ from sqlalchemy.pool import StaticPool
 from app.db.base import Base
 from app.db.models import Product, Workspace
 from app.db.session import get_db_session
+from app.config import get_settings
 
 
 def test_context_ensure_creates_workspace_and_product() -> None:
@@ -56,7 +57,7 @@ def test_context_ensure_creates_workspace_and_product() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["created_workspace"] is True
+    assert payload["created_workspace"] is False
     assert payload["created_product"] is True
 
     verify_session = Session(engine)
@@ -119,3 +120,56 @@ def test_context_ensure_is_idempotent_for_existing_ids() -> None:
     payload = response.json()
     assert payload["created_workspace"] is False
     assert payload["created_product"] is False
+
+
+def test_context_ensure_sets_workspace_cookie_when_workspace_id_is_missing() -> None:
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        future=True,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    session_factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+    from app.main import create_app
+
+    app = create_app()
+
+    def override_db_session():
+        db = session_factory()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db_session] = override_db_session
+
+    product_uuid = uuid.uuid4()
+    settings = get_settings()
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/context/ensure",
+            json={
+                "product_id": str(product_uuid),
+                "platform": "generic",
+                "product_name": "Cookie Product",
+                "source_url": "https://example.com/reviews",
+            },
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["created_workspace"] is False
+    assert payload["created_product"] is True
+    assert payload["workspace_id"]
+
+    set_cookie_header = response.headers.get("set-cookie", "")
+    assert f"{settings.workspace_cookie_name}=" in set_cookie_header
+
+    workspace_uuid = uuid.UUID(payload["workspace_id"])
+    verify_session = Session(engine)
+    assert verify_session.query(Workspace).filter(Workspace.id == workspace_uuid).count() == 1
+    assert verify_session.query(Product).filter(Product.id == product_uuid).count() == 1
+    verify_session.close()

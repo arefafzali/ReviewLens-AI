@@ -12,7 +12,7 @@ class EnsureContextRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    workspace_id: UUID
+    workspace_id: UUID | None = None
     product_id: UUID
     platform: str = Field(default="unknown", min_length=1, max_length=50)
     product_name: str | None = Field(default=None, max_length=255)

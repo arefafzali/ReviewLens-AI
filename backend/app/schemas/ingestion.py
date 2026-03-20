@@ -37,7 +37,7 @@ class URLIngestionRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    workspace_id: UUID
+    workspace_id: UUID | None = None
     product_id: UUID
     target_url: HttpUrl
     reload: bool = Field(
@@ -59,7 +59,7 @@ class CSVIngestionRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    workspace_id: UUID
+    workspace_id: UUID | None = None
     product_id: UUID
     source_ref: str = Field(min_length=1, max_length=2048)
     csv_content: str = Field(default="")

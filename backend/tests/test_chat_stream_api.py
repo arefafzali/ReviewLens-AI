@@ -15,6 +15,7 @@ from app.db.base import Base
 from app.db.models import ChatMessage, Product, Review, Workspace
 from app.db.session import get_db_session
 from app.llm.fake_provider import FakeLLMProvider
+from app.config import get_settings
 
 
 def _build_app_with_db() -> tuple[TestClient, Session, object]:
@@ -359,6 +360,60 @@ def test_chat_history_returns_not_found_when_no_session_exists() -> None:
         },
     )
     assert history.status_code == 404
+
+    app.dependency_overrides.clear()
+    verify_db.close()
+
+
+def test_chat_history_resolves_workspace_from_cookie() -> None:
+    client, verify_db, app = _build_app_with_db()
+    workspace_id, product_id = _seed_context(verify_db, with_review=True)
+
+    from app.db.models import ChatSession
+
+    session_id = uuid.uuid4()
+    verify_db.add(
+        ChatSession(
+            id=session_id,
+            workspace_id=uuid.UUID(workspace_id),
+            product_id=uuid.UUID(product_id),
+            title="History Session",
+        )
+    )
+    verify_db.add(
+        ChatMessage(
+            chat_session_id=session_id,
+            workspace_id=uuid.UUID(workspace_id),
+            product_id=uuid.UUID(product_id),
+            message_index=1,
+            role="user",
+            content="What do users say?",
+        )
+    )
+    verify_db.add(
+        ChatMessage(
+            chat_session_id=session_id,
+            workspace_id=uuid.UUID(workspace_id),
+            product_id=uuid.UUID(product_id),
+            message_index=2,
+            role="assistant",
+            content="Users mention fast onboarding.",
+        )
+    )
+    verify_db.commit()
+
+    client.cookies.set(get_settings().workspace_cookie_name, workspace_id)
+    history = client.get(
+        "/chat/history",
+        params={
+            "product_id": product_id,
+        },
+    )
+
+    assert history.status_code == 200
+    payload = history.json()
+    assert payload["chat_session_id"] == str(session_id)
+    assert len(payload["messages"]) == 2
 
     app.dependency_overrides.clear()
     verify_db.close()
