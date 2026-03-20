@@ -44,7 +44,6 @@ class ProductDetailResponse(BaseModel):
     id: UUID
     workspace_id: UUID
     platform: str
-    external_product_id: str | None = None
     name: str
     source_url: str
     stats: dict[str, object] = Field(default_factory=dict)

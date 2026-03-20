@@ -93,7 +93,6 @@ def get_product(
         id=product.id,
         workspace_id=product.workspace_id,
         platform=product.platform,
-        external_product_id=product.external_product_id,
         name=product.name,
         source_url=product.source_url,
         stats=dict(product.stats or {}),

@@ -50,28 +50,32 @@ function parseCitations(value: unknown): ChatCitationItem[] {
     return [];
   }
 
-  return value
-    .filter((item) => Boolean(item && typeof item === "object"))
-    .map((item) => {
-      const candidate = item as Partial<ChatCitationItem>;
-      const evidenceId = typeof candidate.evidence_id === "string" ? candidate.evidence_id : "";
-      const snippet = typeof candidate.snippet === "string" ? candidate.snippet : "";
-      if (!evidenceId || !snippet) {
-        return null;
-      }
+  const citations: ChatCitationItem[] = [];
+  value.forEach((item) => {
+    if (!item || typeof item !== "object") {
+      return;
+    }
 
-      return {
-        evidence_id: evidenceId,
-        review_id: typeof candidate.review_id === "string" ? candidate.review_id : "",
-        title: typeof candidate.title === "string" ? candidate.title : null,
-        snippet,
-        author_name: typeof candidate.author_name === "string" ? candidate.author_name : null,
-        reviewed_at: typeof candidate.reviewed_at === "string" ? candidate.reviewed_at : null,
-        rating: typeof candidate.rating === "number" ? candidate.rating : null,
-        rank: typeof candidate.rank === "number" ? candidate.rank : 0,
-      };
-    })
-    .filter((item): item is ChatCitationItem => item !== null);
+    const candidate = item as Partial<ChatCitationItem>;
+    const evidenceId = typeof candidate.evidence_id === "string" ? candidate.evidence_id : "";
+    const snippet = typeof candidate.snippet === "string" ? candidate.snippet : "";
+    if (!evidenceId || !snippet) {
+      return;
+    }
+
+    citations.push({
+      evidence_id: evidenceId,
+      review_id: typeof candidate.review_id === "string" ? candidate.review_id : "",
+      title: typeof candidate.title === "string" ? candidate.title : null,
+      snippet,
+      author_name: typeof candidate.author_name === "string" ? candidate.author_name : null,
+      reviewed_at: typeof candidate.reviewed_at === "string" ? candidate.reviewed_at : null,
+      rating: typeof candidate.rating === "number" ? candidate.rating : null,
+      rank: typeof candidate.rank === "number" ? candidate.rank : 0,
+    });
+  });
+
+  return citations;
 }
 
 function parseRunStatus(value: unknown): IngestionRunStatus {
@@ -218,6 +222,7 @@ export function CoreAnalystWorkspace(): ReactNode {
   const [chatSessionId, setChatSessionId] = useState<string | null>(null);
   const [dashboardNotice, setDashboardNotice] = useState<DashboardNotice | null>(null);
   const [pendingDeleteProductId, setPendingDeleteProductId] = useState<string | null>(null);
+  const [isRecapturing, setIsRecapturing] = useState(false);
 
   const activeStreamControllerRef = useRef<AbortController | null>(null);
   const streamEpochRef = useRef(0);
@@ -227,6 +232,7 @@ export function CoreAnalystWorkspace(): ReactNode {
 
   const suggestedQuestions = latestIngestion?.summary_snapshot?.suggested_questions ?? [];
   const hasConversationStarted = chatMessages.length > 0;
+  const hasLoadedProduct = Boolean(selectedProduct);
 
   const loadProducts = useCallback(async () => {
     try {
@@ -506,6 +512,95 @@ export function CoreAnalystWorkspace(): ReactNode {
     activeStreamControllerRef.current?.abort();
   }
 
+  function applyIngestionSuccess(
+    result: IngestionAttemptResponse,
+    context: {
+      workspaceId: string;
+      productId: string;
+      sourceUrl?: string;
+      productName?: string;
+      platform: string;
+    },
+  ): void {
+    setLatestIngestion(result);
+    setProducts((previous) => {
+      const existing = previous.find((item) => item.id === context.productId);
+      const optimistic = buildOptimisticProductFromIngestion(context, result, existing);
+      const withoutCurrent = previous.filter((item) => item.id !== context.productId);
+      return [optimistic, ...withoutCurrent];
+    });
+    setSelectedProductId(context.productId);
+    setDashboardNotice({ tone: "success", message: "Ingestion complete. Product list updated." });
+
+    void apiClient
+      .getProduct(workspaceId, context.productId)
+      .then((detail) => {
+        setProducts((previous) => previous.map((item) => {
+          if (item.id !== context.productId) {
+            return item;
+          }
+
+          return {
+            ...item,
+            platform: detail.platform,
+            name: detail.name,
+            source_url: detail.source_url,
+            total_reviews: detail.total_reviews,
+            average_rating: detail.average_rating,
+            chat_session_count: detail.chat_session_count,
+            latest_ingestion: detail.latest_ingestion,
+            updated_at: detail.updated_at,
+          };
+        }));
+      })
+      .catch(() => {
+        void apiClient
+          .getProducts(workspaceId)
+          .then((items) => {
+            setProducts(items);
+          })
+          .catch(() => {
+            setDashboardNotice({
+              tone: "error",
+              message: "Product update confirmation is delayed. Showing optimistic data.",
+            });
+          });
+      });
+  }
+
+  async function handleRecaptureCurrentProduct(): Promise<void> {
+    if (!selectedProduct || isRecapturing) {
+      return;
+    }
+
+    setIsRecapturing(true);
+    setDashboardNotice({ tone: "success", message: "Recapturing latest data..." });
+
+    try {
+      const result = await apiClient.postUrlIngestion({
+        workspace_id: workspaceId,
+        product_id: selectedProduct.id,
+        target_url: selectedProduct.source_url,
+        reload: true,
+      });
+
+      applyIngestionSuccess(result, {
+        workspaceId,
+        productId: selectedProduct.id,
+        sourceUrl: selectedProduct.source_url,
+        productName: selectedProduct.name,
+        platform: selectedProduct.platform,
+      });
+    } catch {
+      setDashboardNotice({
+        tone: "error",
+        message: "Recapture failed. Please try again.",
+      });
+    } finally {
+      setIsRecapturing(false);
+    }
+  }
+
   async function handleDeleteProduct(productId: string): Promise<void> {
     if (pendingDeleteProductId) {
       return;
@@ -626,6 +721,21 @@ export function CoreAnalystWorkspace(): ReactNode {
             ) : null}
           </div>
         ) : null}
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedProductId("");
+              setLatestIngestion(null);
+              setChatMessages([]);
+              setChatSessionId(null);
+            }}
+            className="rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted"
+          >
+            New Product
+          </button>
+        </div>
+
         <ul className="space-y-1" aria-label="Products list">
           {products.map((product) => {
             const isSelected = product.id === selectedProductId;
@@ -695,57 +805,39 @@ export function CoreAnalystWorkspace(): ReactNode {
       <WorkspaceSectionCard
         section={{
           id: "ingestion-panel",
-          title: "Ingestion Panel",
-          description: "Submit a URL or upload CSV reviews for the currently selected product.",
+          title: hasLoadedProduct ? "Product Source" : "Ingestion Panel",
+          description: hasLoadedProduct
+            ? "Current loaded product source and recapture controls."
+            : "Submit a URL or upload CSV reviews to start a new product context.",
           status: "ready",
-          placeholder: (
+          placeholder: hasLoadedProduct ? (
+            <div className="space-y-3 rounded-md border border-border bg-muted/20 p-3">
+              <div>
+                <p className="text-xs text-muted-foreground">Loaded source URL</p>
+                <p className="mt-1 break-all text-sm font-medium text-foreground">{selectedProduct?.source_url}</p>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground">
+                  Use recapture to refresh this product with the latest source data.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleRecaptureCurrentProduct();
+                  }}
+                  disabled={isRecapturing}
+                  className="rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isRecapturing ? "Recapturing..." : "Recapture Data"}
+                </button>
+              </div>
+            </div>
+          ) : (
             <IngestionPanel
               onProductSelected={setSelectedProductId}
               onIngestionSuccess={(result, context) => {
-                setLatestIngestion(result);
-                setProducts((previous) => {
-                  const existing = previous.find((item) => item.id === context.productId);
-                  const optimistic = buildOptimisticProductFromIngestion(context, result, existing);
-                  const withoutCurrent = previous.filter((item) => item.id !== context.productId);
-                  return [optimistic, ...withoutCurrent];
-                });
-                setSelectedProductId(context.productId);
-                setDashboardNotice({ tone: "success", message: "Ingestion complete. Product list updated." });
-
-                void apiClient
-                  .getProduct(workspaceId, context.productId)
-                  .then((detail) => {
-                    setProducts((previous) => previous.map((item) => {
-                      if (item.id !== context.productId) {
-                        return item;
-                      }
-
-                      return {
-                        ...item,
-                        platform: detail.platform,
-                        name: detail.name,
-                        source_url: detail.source_url,
-                        total_reviews: detail.total_reviews,
-                        average_rating: detail.average_rating,
-                        chat_session_count: detail.chat_session_count,
-                        latest_ingestion: detail.latest_ingestion,
-                        updated_at: detail.updated_at,
-                      };
-                    }));
-                  })
-                  .catch(() => {
-                    void apiClient
-                      .getProducts(workspaceId)
-                      .then((items) => {
-                        setProducts(items);
-                      })
-                      .catch(() => {
-                        setDashboardNotice({
-                          tone: "error",
-                          message: "Product update confirmation is delayed. Showing optimistic data.",
-                        });
-                      });
-                  });
+                applyIngestionSuccess(result, context);
               }}
             />
           ),

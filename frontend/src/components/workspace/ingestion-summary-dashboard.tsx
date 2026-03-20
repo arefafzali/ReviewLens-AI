@@ -74,7 +74,7 @@ function Histogram({ histogram }: { histogram: Record<string, number> }): ReactN
       {entries.map((item) => {
         const widthPercent = Math.round((item.count / maxCount) * 100);
         return (
-          <li key={item.label} className="grid grid-cols-[4.5rem_1fr_2.5rem] items-center gap-2 text-xs">
+          <li key={item.label} className="grid grid-cols-[2rem_1fr_2rem] items-center gap-2 text-xs">
             <span className="text-muted-foreground">{item.label}</span>
             <div className="h-2 rounded-full bg-muted">
               <div className="h-2 rounded-full bg-primary" style={{ width: `${widthPercent}%` }} />
@@ -92,20 +92,46 @@ function TrendBars({ series }: { series: IngestionTimeBucket[] }): ReactNode {
     return <p className="text-xs text-muted-foreground">Not enough dated reviews to build a trend yet.</p>;
   }
 
-  const maxCount = Math.max(1, ...series.map((item) => Math.max(0, item.count)));
+  const totalCount = series.reduce((sum, bucket) => sum + Math.max(0, bucket.count), 0);
   const recent = series.slice(-8);
+
+  if (totalCount === 0) {
+    return (
+      <div className="space-y-2" aria-label="Review count over time">
+        <p className="text-xs text-muted-foreground">
+          Trend data has dates but no review counts yet.
+        </p>
+        <div className="flex justify-between text-[11px] text-muted-foreground">
+          <span>{recent[0]?.date ?? ""}</span>
+          <span>{recent[recent.length - 1]?.date ?? ""}</span>
+        </div>
+      </div>
+    );
+  }
+
+  const maxCount = Math.max(1, ...recent.map((item) => Math.max(0, item.count)));
 
   return (
     <div className="space-y-2" aria-label="Review count over time">
-      <div className="flex h-20 items-end gap-2 rounded-md bg-muted/40 p-2">
-        {recent.map((bucket) => {
-          const heightPercent = Math.max(8, Math.round((Math.max(0, bucket.count) / maxCount) * 100));
-          return (
-            <div key={bucket.date} className="flex min-w-0 flex-1 flex-col items-center justify-end">
-              <div className="w-full rounded-sm bg-accent" style={{ height: `${heightPercent}%` }} title={`${bucket.date}: ${bucket.count}`} />
-            </div>
-          );
-        })}
+      <div className="overflow-x-auto">
+        <div className="flex h-16 min-w-[16rem] items-end gap-1.5 rounded-md bg-muted/40 p-2 sm:h-20 sm:gap-2 lg:h-24 lg:min-w-0">
+          {recent.map((bucket) => {
+            const count = Math.max(0, bucket.count);
+            const heightPercent = (count / maxCount) * 100;
+            return (
+              <div key={bucket.date} className="flex w-6 min-w-[1.5rem] flex-col items-center sm:min-w-0 sm:flex-1">
+                <span className="mb-1 text-[9px] font-medium text-muted-foreground sm:text-[10px]">{bucket.count}</span>
+                <div className="relative h-8 w-full sm:h-12 lg:h-14">
+                  <div
+                    className="absolute inset-x-0 bottom-0 rounded-sm bg-primary"
+                    style={{ height: `${heightPercent}%` }}
+                    title={`${bucket.date}: ${bucket.count} reviews (${heightPercent.toFixed(1)}% of visible max)`}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
       <div className="flex justify-between text-[11px] text-muted-foreground">
         <span>{recent[0]?.date ?? ""}</span>

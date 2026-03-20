@@ -5,12 +5,11 @@ INSERT INTO workspaces (id, name)
 VALUES ('11111111-1111-1111-1111-111111111111', 'Local Workspace')
 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, updated_at = now();
 
-INSERT INTO products (id, workspace_id, platform, external_product_id, name, source_url)
+INSERT INTO products (id, workspace_id, platform, name, source_url)
 VALUES (
   '22222222-2222-2222-2222-222222222222',
   '11111111-1111-1111-1111-111111111111',
   'capterra',
-  'local-product',
   'Local Seed Product',
   'https://www.capterra.com/p/seed-product'
 )
@@ -22,7 +21,7 @@ VALUES (
   '11111111-1111-1111-1111-111111111111',
   '22222222-2222-2222-2222-222222222222',
   'scrape',
-  'succeeded',
+  'success',
   'https://www.capterra.com/p/seed-product/reviews',
   now(),
   now()

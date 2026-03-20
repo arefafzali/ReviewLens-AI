@@ -40,7 +40,6 @@ describe("ProductAnalysisWorkspace", () => {
       id: "08f51446-b913-4f99-a6cc-0c7f84b49145",
       workspace_id: "workspace-1",
       platform: "capterra",
-      external_product_id: null,
       name: "PressPage",
       source_url: "https://www.capterra.com/p/164876/PressPage/reviews/",
       stats: {

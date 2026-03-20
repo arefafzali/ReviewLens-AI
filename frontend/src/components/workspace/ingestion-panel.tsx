@@ -297,6 +297,7 @@ export function IngestionPanel({ onIngestionSuccess, onProductSelected }: Ingest
           className="rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition hover:bg-muted"
           onClick={() => switchMode("url")}
           disabled={isSubmitting}
+          suppressHydrationWarning
         >
           Ingest from URL
         </button>
@@ -307,6 +308,7 @@ export function IngestionPanel({ onIngestionSuccess, onProductSelected }: Ingest
           className="rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition hover:bg-muted"
           onClick={() => switchMode("csv")}
           disabled={isSubmitting}
+          suppressHydrationWarning
         >
           Upload CSV
         </button>
@@ -332,6 +334,7 @@ export function IngestionPanel({ onIngestionSuccess, onProductSelected }: Ingest
             }}
             aria-invalid={urlForm.error ? "true" : "false"}
             aria-describedby="ingestion-url-help ingestion-url-error"
+            suppressHydrationWarning
           />
           <p id="ingestion-url-help" className="text-xs text-muted-foreground">
             Paste the public URL for a product review page.
@@ -345,6 +348,7 @@ export function IngestionPanel({ onIngestionSuccess, onProductSelected }: Ingest
             type="submit"
             className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
             disabled={isSubmitting}
+            suppressHydrationWarning
           >
             {isSubmitting ? "Submitting..." : "Run URL Ingestion"}
           </button>
@@ -367,6 +371,7 @@ export function IngestionPanel({ onIngestionSuccess, onProductSelected }: Ingest
             }}
             aria-invalid={csvForm.error ? "true" : "false"}
             aria-describedby="ingestion-csv-help ingestion-csv-error"
+            suppressHydrationWarning
           />
           <p id="ingestion-csv-help" className="text-xs text-muted-foreground">
             {csvHelper}
@@ -380,6 +385,7 @@ export function IngestionPanel({ onIngestionSuccess, onProductSelected }: Ingest
             type="submit"
             className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
             disabled={isSubmitting}
+            suppressHydrationWarning
           >
             {isSubmitting ? "Uploading..." : "Run CSV Ingestion"}
           </button>
@@ -399,6 +405,7 @@ export function IngestionPanel({ onIngestionSuccess, onProductSelected }: Ingest
             type="button"
             onClick={() => switchMode("csv")}
             className="mt-2 rounded-md border border-amber-400 bg-amber-100 px-2 py-1 font-medium hover:bg-amber-200"
+            suppressHydrationWarning
           >
             Switch to CSV fallback
           </button>

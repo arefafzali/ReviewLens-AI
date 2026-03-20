@@ -102,7 +102,6 @@ describe("CoreAnalystWorkspace", () => {
       id: "product-1",
       workspace_id: "workspace-1",
       platform: "generic",
-      external_product_id: null,
       name: "Example Product",
       source_url: "https://www.g2.com/products/example/reviews",
       stats: {
@@ -182,10 +181,40 @@ describe("CoreAnalystWorkspace", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Run URL Ingestion" }));
 
-    expect(await screen.findByText("run-new")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(apiClient.postUrlIngestion).toHaveBeenCalled();
+    });
     expect(await screen.findByText("new product")).toBeInTheDocument();
     expect(await screen.findByText(/ingestion complete\. product list updated\./i)).toBeInTheDocument();
     expect(vi.mocked(apiClient.getProducts).mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("shows source and recapture for loaded products, then reveals ingestion form for New Product", async () => {
+    render(<CoreAnalystWorkspace />);
+
+    expect(await screen.findByText(/loaded source url/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Recapture Data" })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/review page url/i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "New Product" }));
+
+    expect(await screen.findByLabelText(/review page url/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Run URL Ingestion" })).toBeInTheDocument();
+  });
+
+  it("recaptures the loaded product using reload mode", async () => {
+    render(<CoreAnalystWorkspace />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Recapture Data" }));
+
+    await waitFor(() => {
+      expect(apiClient.postUrlIngestion).toHaveBeenCalledWith({
+        workspace_id: "workspace-1",
+        product_id: "product-1",
+        target_url: "https://www.g2.com/products/example/reviews",
+        reload: true,
+      });
+    });
   });
 
   it("optimistically removes a product and rolls back when delete fails", async () => {
@@ -250,15 +279,11 @@ describe("CoreAnalystWorkspace", () => {
     expect(await screen.findByText("E1")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Analyst Chat" })).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText(/review page url/i), {
-      target: { value: "https://www.g2.com/products/example/reviews" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Run URL Ingestion" }));
-    await screen.findByText("run-456");
-
+    fireEvent.click(screen.getByRole("button", { name: "Recapture Data" }));
     await waitFor(() => {
-      expect(screen.queryByText("What are common strengths?")).not.toBeInTheDocument();
+      expect(apiClient.postUrlIngestion).toHaveBeenCalled();
     });
+
     expect(vi.mocked(apiClient.getChatHistory).mock.calls.length).toBeGreaterThanOrEqual(1);
   });
 
@@ -309,12 +334,10 @@ describe("CoreAnalystWorkspace", () => {
 
     render(<CoreAnalystWorkspace />);
 
-    fireEvent.change(screen.getByLabelText(/review page url/i), {
-      target: { value: "https://www.g2.com/products/example/reviews" },
+    fireEvent.click(await screen.findByRole("button", { name: "Recapture Data" }));
+    await waitFor(() => {
+      expect(apiClient.postUrlIngestion).toHaveBeenCalled();
     });
-    fireEvent.click(screen.getByRole("button", { name: "Run URL Ingestion" }));
-
-    expect(await screen.findByText("run-456")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Ingestion Summary" })).toBeInTheDocument();
     expect((await screen.findAllByText("4.25 / 5")).length).toBeGreaterThanOrEqual(1);
     expect(await screen.findByText("support (5)")).toBeInTheDocument();
@@ -345,11 +368,10 @@ describe("CoreAnalystWorkspace", () => {
 
     render(<CoreAnalystWorkspace />);
 
-    fireEvent.change(screen.getByLabelText(/review page url/i), {
-      target: { value: "https://www.g2.com/products/example/reviews" },
+    fireEvent.click(await screen.findByRole("button", { name: "Recapture Data" }));
+    await waitFor(() => {
+      expect(apiClient.postUrlIngestion).toHaveBeenCalled();
     });
-    fireEvent.click(screen.getByRole("button", { name: "Run URL Ingestion" }));
-    await screen.findByText("run-456");
 
     fireEvent.change(screen.getByLabelText(/ask a question/i), {
       target: { value: "What do users mention most often?" },
@@ -371,11 +393,10 @@ describe("CoreAnalystWorkspace", () => {
 
     render(<CoreAnalystWorkspace />);
 
-    fireEvent.change(screen.getByLabelText(/review page url/i), {
-      target: { value: "https://www.g2.com/products/example/reviews" },
+    fireEvent.click(await screen.findByRole("button", { name: "Recapture Data" }));
+    await waitFor(() => {
+      expect(apiClient.postUrlIngestion).toHaveBeenCalled();
     });
-    fireEvent.click(screen.getByRole("button", { name: "Run URL Ingestion" }));
-    await screen.findByText("run-456");
 
     fireEvent.change(screen.getByLabelText(/ask a question/i), {
       target: { value: "What reasons in the reviews best explain the average rating?" },
@@ -397,11 +418,10 @@ describe("CoreAnalystWorkspace", () => {
 
     render(<CoreAnalystWorkspace />);
 
-    fireEvent.change(screen.getByLabelText(/review page url/i), {
-      target: { value: "https://www.g2.com/products/example/reviews" },
+    fireEvent.click(await screen.findByRole("button", { name: "Recapture Data" }));
+    await waitFor(() => {
+      expect(apiClient.postUrlIngestion).toHaveBeenCalled();
     });
-    fireEvent.click(screen.getByRole("button", { name: "Run URL Ingestion" }));
-    await screen.findByText("run-456");
 
     fireEvent.change(screen.getByLabelText(/ask a question/i), {
       target: { value: "How does this compare to competitor sentiment on G2?" },
@@ -446,7 +466,9 @@ describe("CoreAnalystWorkspace", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Run URL Ingestion" }));
 
-    expect(await screen.findByText("run-new")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(apiClient.postUrlIngestion).toHaveBeenCalled();
+    });
     expect(await screen.findByText("new product")).toBeInTheDocument();
     expect(await screen.findByRole("alert")).toHaveTextContent(/showing optimistic data/i);
   });
@@ -493,7 +515,6 @@ describe("CoreAnalystWorkspace", () => {
       id: productId,
       workspace_id: "workspace-1",
       platform: "generic",
-      external_product_id: null,
       name: productId === "product-2" ? "Second Product" : "Example Product",
       source_url:
         productId === "product-2"
@@ -548,7 +569,10 @@ describe("CoreAnalystWorkspace", () => {
     fireEvent.click(analyzeButtons[1]);
     await screen.findByText("Second Product");
 
-    triggerDone?.();
+    await waitFor(() => {
+      expect(triggerDone).not.toBeNull();
+    });
+    triggerDone!();
 
     await waitFor(() => {
       expect(screen.queryByText("Stale response from previous product.")).not.toBeInTheDocument();

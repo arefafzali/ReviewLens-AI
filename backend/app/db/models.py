@@ -35,7 +35,6 @@ class Product(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
     platform: Mapped[str] = mapped_column(String(50), default="capterra", nullable=False)
-    external_product_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     source_url: Mapped[str] = mapped_column(Text, nullable=False)
     stats: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)

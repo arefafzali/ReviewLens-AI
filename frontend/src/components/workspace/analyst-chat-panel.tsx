@@ -164,6 +164,9 @@ function CitationList({ citations }: { citations: ChatCitationItem[] }): ReactNo
 
 function ChatMessageList({ messages, isResponding }: { messages: ChatMessage[]; isResponding: boolean }): ReactNode {
   const endOfListRef = useRef<HTMLDivElement | null>(null);
+  const hasStreamingAssistantMessage = messages.some(
+    (message) => message.role === "assistant" && message.state === "streaming",
+  );
 
   useEffect(() => {
     const endOfList = endOfListRef.current;
@@ -237,7 +240,7 @@ function ChatMessageList({ messages, isResponding }: { messages: ChatMessage[]; 
           </article>
         );
       })}
-      {isResponding ? (
+      {isResponding && !hasStreamingAssistantMessage ? (
         <article className="rounded-md border border-dashed border-border bg-background p-2" aria-live="polite">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Assistant</p>
           <p className="mt-1 text-sm text-muted-foreground">Analyzing ingested reviews...</p>

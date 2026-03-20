@@ -95,4 +95,29 @@ describe("IngestionSummaryDashboard", () => {
     expect(screen.getByText("support (0)")).toBeInTheDocument();
     expect(screen.getByText("No reviews captured yet for this run.")).toBeInTheDocument();
   });
+
+  it("shows trend fallback when date buckets have zero counts", () => {
+    render(
+      <IngestionSummaryDashboard
+        result={buildResult({
+          summary_snapshot: {
+            total_reviews: 4,
+            rated_reviews: 0,
+            average_rating: null,
+            rating_histogram: { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0 },
+            review_count_over_time: [
+              { date: "2026-03-01", count: 0 },
+              { date: "2026-03-02", count: 0 },
+            ],
+            date_range: { start: "2026-03-01", end: "2026-03-02" },
+            top_keywords: [],
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByText(/trend data has dates but no review counts yet/i)).toBeInTheDocument();
+    expect(screen.getByText("2026-03-01")).toBeInTheDocument();
+    expect(screen.getByText("2026-03-02")).toBeInTheDocument();
+  });
 });

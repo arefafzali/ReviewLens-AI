@@ -258,4 +258,24 @@ describe("AnalystChatPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel Response" }));
     expect(onCancelResponse).toHaveBeenCalledTimes(1);
   });
+
+  it("does not render duplicate loading box when a streaming assistant message already exists", () => {
+    render(
+      <AnalystChatPanel
+        onSubmitQuestion={vi.fn()}
+        messages={[
+          {
+            id: "m-stream",
+            role: "assistant",
+            content: "",
+            state: "streaming",
+          },
+        ]}
+        isResponding
+      />,
+    );
+
+    expect(screen.queryByText(/analyzing ingested reviews/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/message streaming state/i)).toBeInTheDocument();
+  });
 });

@@ -51,28 +51,32 @@ function parseCitations(value: unknown): ChatCitationItem[] {
     return [];
   }
 
-  return value
-    .filter((item) => Boolean(item && typeof item === "object"))
-    .map((item) => {
-      const candidate = item as Partial<ChatCitationItem>;
-      const evidenceId = typeof candidate.evidence_id === "string" ? candidate.evidence_id : "";
-      const snippet = typeof candidate.snippet === "string" ? candidate.snippet : "";
-      if (!evidenceId || !snippet) {
-        return null;
-      }
+  const citations: ChatCitationItem[] = [];
+  value.forEach((item) => {
+    if (!item || typeof item !== "object") {
+      return;
+    }
 
-      return {
-        evidence_id: evidenceId,
-        review_id: typeof candidate.review_id === "string" ? candidate.review_id : "",
-        title: typeof candidate.title === "string" ? candidate.title : null,
-        snippet,
-        author_name: typeof candidate.author_name === "string" ? candidate.author_name : null,
-        reviewed_at: typeof candidate.reviewed_at === "string" ? candidate.reviewed_at : null,
-        rating: typeof candidate.rating === "number" ? candidate.rating : null,
-        rank: typeof candidate.rank === "number" ? candidate.rank : 0,
-      };
-    })
-    .filter((item): item is ChatCitationItem => item !== null);
+    const candidate = item as Partial<ChatCitationItem>;
+    const evidenceId = typeof candidate.evidence_id === "string" ? candidate.evidence_id : "";
+    const snippet = typeof candidate.snippet === "string" ? candidate.snippet : "";
+    if (!evidenceId || !snippet) {
+      return;
+    }
+
+    citations.push({
+      evidence_id: evidenceId,
+      review_id: typeof candidate.review_id === "string" ? candidate.review_id : "",
+      title: typeof candidate.title === "string" ? candidate.title : null,
+      snippet,
+      author_name: typeof candidate.author_name === "string" ? candidate.author_name : null,
+      reviewed_at: typeof candidate.reviewed_at === "string" ? candidate.reviewed_at : null,
+      rating: typeof candidate.rating === "number" ? candidate.rating : null,
+      rank: typeof candidate.rank === "number" ? candidate.rank : 0,
+    });
+  });
+
+  return citations;
 }
 
 function parseRunStatus(value: unknown): IngestionRunStatus {

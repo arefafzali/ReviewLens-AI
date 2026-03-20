@@ -188,7 +188,6 @@ export type ProductDetailResponse = {
   id: string;
   workspace_id: string;
   platform: string;
-  external_product_id?: string | null;
   name: string;
   source_url: string;
   stats: Record<string, unknown>;
