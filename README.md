@@ -55,3 +55,17 @@ docker compose exec frontend npm test
 
 - `scripts/dev-seed.sql` inserts one workspace, one product, one ingestion run, and one review for quick local verification.
 - Frontend points to backend using `NEXT_PUBLIC_API_BASE_URL`.
+
+Release hygiene tip:
+
+- Before committing focused work, verify staged file scope:
+
+```powershell
+pwsh ./scripts/check-staged-files.ps1 -AllowedPrefixes backend/,frontend/
+```
+
+You can narrow prefixes for a task-specific commit, for example:
+
+```powershell
+pwsh ./scripts/check-staged-files.ps1 -AllowedPrefixes frontend/src/components/workspace/
+```

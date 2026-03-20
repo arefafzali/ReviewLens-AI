@@ -1,0 +1,36 @@
+{
+  "reviews": [
+    {
+      "title": "Strong onboarding and support",
+      "body": "The onboarding team was responsive and helped us launch quickly.",
+      "rating": "5",
+      "author": "Operations Manager",
+      "date": "2026-02-11",
+      "url": "https://www.capterra.com/reviews/1001"
+    },
+    {
+      "title": "Great workflow automation",
+      "body": "Automation reduced manual publishing steps for our communications team.",
+      "rating": "4",
+      "author": "Comms Specialist",
+      "date": "2026-02-20",
+      "url": "https://www.capterra.com/reviews/1002"
+    },
+    {
+      "title": "Great workflow automation duplicate",
+      "body": "Automation reduced manual publishing steps for our communications team.",
+      "rating": "4",
+      "author": "Comms Specialist",
+      "date": "2026-02-20",
+      "url": "https://www.capterra.com/reviews/1002"
+    },
+    {
+      "title": "Reliable analytics visibility",
+      "body": "Dashboards gave clear visibility into campaign performance and sentiment.",
+      "rating": "4.5",
+      "author": "PR Analyst",
+      "date": "2026-03-02",
+      "url": "https://www.capterra.com/reviews/1003"
+    }
+  ]
+}

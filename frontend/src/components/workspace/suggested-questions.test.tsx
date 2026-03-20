@@ -53,4 +53,25 @@ describe("SuggestedQuestions", () => {
 
     expect(screen.getByRole("button", { name: "What are recurring pain points?" })).toBeInTheDocument();
   });
+
+  it("trims empty suggestions and respects max question limit", () => {
+    render(
+      <SuggestedQuestions
+        questions={[
+          "  What do users like most?  ",
+          "",
+          "   ",
+          "What slows teams down?",
+          "How does sentiment vary by date?",
+        ]}
+        hasConversationStarted={false}
+        maxQuestions={2}
+        onSelectQuestion={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "What do users like most?" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "What slows teams down?" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "How does sentiment vary by date?" })).not.toBeInTheDocument();
+  });
 });

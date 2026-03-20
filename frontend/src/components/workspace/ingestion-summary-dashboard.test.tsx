@@ -72,4 +72,27 @@ describe("IngestionSummaryDashboard", () => {
     expect(screen.getByText(/no recurring keywords/i)).toBeInTheDocument();
     expect(screen.getByText("N/A")).toBeInTheDocument();
   });
+
+  it("gracefully handles malformed summary payload shapes", () => {
+    render(
+      <IngestionSummaryDashboard
+        result={buildResult({
+          captured_reviews: 0,
+          summary_snapshot: {
+            total_reviews: 0,
+            rated_reviews: 0,
+            average_rating: null,
+            rating_histogram: { "1": Number.NaN, "5": -3 },
+            review_count_over_time: [{ date: "2026-03-03", count: 2 }, { date: "", count: 5 }] as never,
+            top_keywords: [{ keyword: "", count: 2 }, { keyword: "support", count: -10 }] as never,
+            date_range: { start: 123 as never, end: null },
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByText(/no review dates captured/i)).toBeInTheDocument();
+    expect(screen.getByText("support (0)")).toBeInTheDocument();
+    expect(screen.getByText("No reviews captured yet for this run.")).toBeInTheDocument();
+  });
 });

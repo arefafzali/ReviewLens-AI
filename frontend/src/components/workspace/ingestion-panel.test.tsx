@@ -173,4 +173,25 @@ describe("IngestionPanel", () => {
 
     expect(await screen.findByText(/taking longer than expected/i)).toBeInTheDocument();
   });
+
+  it("renders backend failure notices as alerts", async () => {
+    vi.mocked(apiClient.postUrlIngestion).mockRejectedValueOnce(
+      new ApiClientError("Request failed", 500, {
+        error: {
+          code: "HTTP_500",
+          message: "Ingestion pipeline failed after retries.",
+        },
+      }),
+    );
+
+    render(<IngestionPanel />);
+
+    fireEvent.change(screen.getByLabelText(/review page url/i), {
+      target: { value: "https://www.capterra.com/p/147795/Coveragebook-com/reviews/" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run URL Ingestion" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/ingestion pipeline failed after retries/i);
+  });
 });

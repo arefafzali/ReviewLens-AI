@@ -102,6 +102,13 @@ function formatCitationRating(value: number | null | undefined): string | null {
   return `${value.toFixed(1)} / 5`;
 }
 
+function safeCitationText(value: unknown): string {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value.trim();
+}
+
 function CitationList({ citations }: { citations: ChatCitationItem[] }): ReactNode {
   if (citations.length === 0) {
     return null;
@@ -113,26 +120,37 @@ function CitationList({ citations }: { citations: ChatCitationItem[] }): ReactNo
         Supporting review evidence
       </p>
       <ul className="space-y-2">
-        {citations.slice(0, 3).map((citation) => {
+        {citations.slice(0, 3).map((citation, index) => {
           const rating = formatCitationRating(citation.rating);
           const hasMeta = Boolean(citation.reviewed_at || rating || citation.author_name);
+          const evidenceId = safeCitationText(citation.evidence_id) || "E?";
+          const reviewId = safeCitationText(citation.review_id) || "unknown-review";
+          const title = safeCitationText(citation.title);
+          const snippet = safeCitationText(citation.snippet);
+          const authorName = safeCitationText(citation.author_name);
+          const reviewedAt = safeCitationText(citation.reviewed_at);
+
+          if (!snippet) {
+            return null;
+          }
+
           return (
-            <li key={`${citation.evidence_id}-${citation.review_id}`} className="rounded-md border border-border/70 bg-background/60 p-2">
+            <li key={`${evidenceId}-${reviewId}-${index}`} className="rounded-md border border-border/70 bg-background/60 p-2">
               <div className="mb-1 flex items-center justify-between gap-2">
                 <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                  {citation.evidence_id}
+                  {evidenceId}
                 </span>
-                {citation.title ? (
-                  <span className="truncate text-[11px] text-muted-foreground" title={citation.title}>
-                    {citation.title}
+                {title ? (
+                  <span className="truncate text-[11px] text-muted-foreground" title={title}>
+                    {title}
                   </span>
                 ) : null}
               </div>
-              <p className="text-xs text-foreground whitespace-pre-wrap">&quot;{citation.snippet}&quot;</p>
+              <p className="text-xs text-foreground whitespace-pre-wrap">&quot;{snippet}&quot;</p>
               {hasMeta ? (
                 <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-                  {citation.author_name ? <span>{citation.author_name}</span> : null}
-                  {citation.reviewed_at ? <span>{citation.reviewed_at}</span> : null}
+                  {authorName ? <span>{authorName}</span> : null}
+                  {reviewedAt ? <span>{reviewedAt}</span> : null}
                   {rating ? <span>{rating}</span> : null}
                 </div>
               ) : null}

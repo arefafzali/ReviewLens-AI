@@ -257,3 +257,38 @@ def test_products_list_isolated_by_workspace_cookie_across_clients() -> None:
 
     app.dependency_overrides.clear()
     verify_db.close()
+
+
+def test_products_cookie_isolation_smoke_with_cookie_issuance_and_reuse() -> None:
+    _client, verify_db, app = _build_app_with_db()
+    cookie_name = get_settings().workspace_cookie_name
+
+    with TestClient(app) as client_a:
+        first = client_a.get("/products")
+        assert first.status_code == 200
+        assert first.json() == []
+        assert cookie_name in client_a.cookies
+        workspace_a = uuid.UUID(client_a.cookies.get(cookie_name))
+
+        _seed_product_with_dependents(verify_db, workspace_a, name="Cookie A Product")
+
+        second = client_a.get("/products")
+        assert second.status_code == 200
+        assert len(second.json()) == 1
+        assert second.json()[0]["name"] == "Cookie A Product"
+
+    with TestClient(app) as client_b:
+        first_b = client_b.get("/products")
+        assert first_b.status_code == 200
+        assert first_b.json() == []
+        assert cookie_name in client_b.cookies
+        workspace_b = uuid.UUID(client_b.cookies.get(cookie_name))
+
+        assert workspace_b != workspace_a
+
+        after_seed_a = client_b.get("/products")
+        assert after_seed_a.status_code == 200
+        assert after_seed_a.json() == []
+
+    app.dependency_overrides.clear()
+    verify_db.close()

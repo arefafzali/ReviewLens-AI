@@ -47,6 +47,20 @@ describe("createSseEventParser", () => {
       parser.push("event: token\ndata: not-json\n\n");
     }).toThrow(ChatStreamParseError);
   });
+
+  it("supports SSE events with multiline data payloads", () => {
+    const events: Array<{ event: string; data: unknown }> = [];
+    const parser = createSseEventParser((event) => events.push(event));
+
+    parser.push("event: citations\ndata: [\n");
+    parser.push('data: {"evidence_id":"E1","snippet":"A"}\n');
+    parser.push("data: ]\n\n");
+    parser.flush();
+
+    expect(events).toEqual([
+      { event: "citations", data: [{ evidence_id: "E1", snippet: "A" }] },
+    ]);
+  });
 });
 
 describe("streamChatCompletion", () => {
@@ -119,5 +133,20 @@ describe("streamChatCompletion", () => {
         },
       }),
     ).rejects.toThrow("done event");
+  });
+
+  it("throws a clear transport error for non-200 responses", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response("failed", { status: 503 }));
+
+    await expect(
+      streamChatCompletion({
+        baseUrl: "http://localhost:8000",
+        payload: {
+          workspace_id: "w1",
+          product_id: "p1",
+          question: "What are users saying?",
+        },
+      }),
+    ).rejects.toThrow(ChatStreamTransportError);
   });
 });

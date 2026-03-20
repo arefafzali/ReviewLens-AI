@@ -18,6 +18,40 @@ function safeHistogramCount(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
 }
 
+function normalizeTrendBuckets(raw: unknown): IngestionTimeBucket[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return raw
+    .filter((item) => Boolean(item && typeof item === "object"))
+    .map((item) => {
+      const candidate = item as Partial<IngestionTimeBucket>;
+      return {
+        date: typeof candidate.date === "string" ? candidate.date : "",
+        count: typeof candidate.count === "number" && Number.isFinite(candidate.count) ? Math.max(0, candidate.count) : 0,
+      };
+    })
+    .filter((item) => item.date.length > 0);
+}
+
+function normalizeTopKeywords(raw: unknown): IngestionKeywordCount[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return raw
+    .filter((item) => Boolean(item && typeof item === "object"))
+    .map((item) => {
+      const candidate = item as Partial<IngestionKeywordCount>;
+      return {
+        keyword: typeof candidate.keyword === "string" ? candidate.keyword : "",
+        count: typeof candidate.count === "number" && Number.isFinite(candidate.count) ? Math.max(0, candidate.count) : 0,
+      };
+    })
+    .filter((item) => item.keyword.length > 0);
+}
+
 function renderDateRange(start: string | null | undefined, end: string | null | undefined): string {
   if (!start && !end) {
     return "No review dates captured";
@@ -103,9 +137,15 @@ export function IngestionSummaryDashboard({ result }: IngestionSummaryDashboardP
   const ratedReviews = typeof summary.rated_reviews === "number" ? summary.rated_reviews : 0;
   const averageRating = typeof summary.average_rating === "number" ? summary.average_rating : null;
   const histogram = typeof summary.rating_histogram === "object" && summary.rating_histogram ? summary.rating_histogram : {};
-  const trend = Array.isArray(summary.review_count_over_time) ? summary.review_count_over_time : [];
-  const topKeywords = Array.isArray(summary.top_keywords) ? summary.top_keywords : [];
-  const dateRange = summary.date_range ?? { start: null, end: null };
+  const trend = normalizeTrendBuckets(summary.review_count_over_time);
+  const topKeywords = normalizeTopKeywords(summary.top_keywords);
+  const dateRange =
+    summary.date_range && typeof summary.date_range === "object"
+      ? {
+          start: typeof summary.date_range.start === "string" ? summary.date_range.start : null,
+          end: typeof summary.date_range.end === "string" ? summary.date_range.end : null,
+        }
+      : { start: null, end: null };
 
   const hasSparseData = totalReviews <= 1;
   const completionHint =

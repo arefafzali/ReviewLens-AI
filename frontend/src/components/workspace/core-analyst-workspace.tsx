@@ -4,7 +4,6 @@ import React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
-import { ProductCard } from "@/components/dashboard/product-card";
 import {
   AnalystChatPanel,
   createStreamingAssistantMessage,
@@ -52,11 +51,27 @@ function parseCitations(value: unknown): ChatCitationItem[] {
   }
 
   return value
-    .filter((item): item is ChatCitationItem => Boolean(item && typeof item === "object" && "evidence_id" in item && "snippet" in item))
-    .map((item) => ({
-      ...item,
-      rank: typeof item.rank === "number" ? item.rank : 0,
-    }));
+    .filter((item) => Boolean(item && typeof item === "object"))
+    .map((item) => {
+      const candidate = item as Partial<ChatCitationItem>;
+      const evidenceId = typeof candidate.evidence_id === "string" ? candidate.evidence_id : "";
+      const snippet = typeof candidate.snippet === "string" ? candidate.snippet : "";
+      if (!evidenceId || !snippet) {
+        return null;
+      }
+
+      return {
+        evidence_id: evidenceId,
+        review_id: typeof candidate.review_id === "string" ? candidate.review_id : "",
+        title: typeof candidate.title === "string" ? candidate.title : null,
+        snippet,
+        author_name: typeof candidate.author_name === "string" ? candidate.author_name : null,
+        reviewed_at: typeof candidate.reviewed_at === "string" ? candidate.reviewed_at : null,
+        rating: typeof candidate.rating === "number" ? candidate.rating : null,
+        rank: typeof candidate.rank === "number" ? candidate.rank : 0,
+      };
+    })
+    .filter((item): item is ChatCitationItem => item !== null);
 }
 
 function parseRunStatus(value: unknown): IngestionRunStatus {
@@ -96,6 +111,9 @@ function buildIngestionSnapshotFromProduct(detail: ProductDetailResponse): Inges
     return null;
   }
 
+  const stats = detail.stats ?? {};
+  const normalizedStats = typeof stats === "object" && stats ? stats : {};
+
   return {
     ingestion_run_id: detail.latest_ingestion?.ingestion_run_id ?? `product-${detail.id}`,
     source_type: "scrape",
@@ -106,6 +124,7 @@ function buildIngestionSnapshotFromProduct(detail: ProductDetailResponse): Inges
     warnings: [],
     diagnostics: {},
     summary_snapshot: {
+      ...normalizedStats,
       total_reviews: detail.total_reviews,
       average_rating: detail.average_rating ?? null,
       suggested_questions: parseSuggestedQuestionsFromStats(detail.stats),
@@ -201,6 +220,8 @@ export function CoreAnalystWorkspace(): ReactNode {
   const [pendingDeleteProductId, setPendingDeleteProductId] = useState<string | null>(null);
 
   const activeStreamControllerRef = useRef<AbortController | null>(null);
+  const streamEpochRef = useRef(0);
+  const selectedProductIdRef = useRef(selectedProductId);
   const selectedProduct = products.find((item) => item.id === selectedProductId) ?? null;
   const canAnalyzeSelectedProduct = Boolean(latestIngestion) || (selectedProduct?.total_reviews ?? 0) > 0 || chatMessages.length > 0;
 
@@ -232,6 +253,10 @@ export function CoreAnalystWorkspace(): ReactNode {
   }, [loadProducts]);
 
   useEffect(() => {
+    selectedProductIdRef.current = selectedProductId;
+  }, [selectedProductId]);
+
+  useEffect(() => {
     if (!selectedProductId) {
       return;
     }
@@ -256,6 +281,7 @@ export function CoreAnalystWorkspace(): ReactNode {
     let canceled = false;
     const storedSessionId = getStoredChatSessionId(workspaceId, selectedProductId) ?? undefined;
 
+    streamEpochRef.current += 1;
     activeStreamControllerRef.current?.abort();
     activeStreamControllerRef.current = null;
     setIsChatResponding(false);
@@ -392,6 +418,12 @@ export function CoreAnalystWorkspace(): ReactNode {
 
     const controller = new AbortController();
     activeStreamControllerRef.current = controller;
+    const streamEpoch = ++streamEpochRef.current;
+    const streamProductId = selectedProductId;
+
+    function isActiveStream(): boolean {
+      return streamEpochRef.current === streamEpoch && streamProductId === selectedProductIdRef.current;
+    }
 
     try {
       const done = await streamChatCompletion({
@@ -403,13 +435,22 @@ export function CoreAnalystWorkspace(): ReactNode {
         },
         signal: controller.signal,
         onMeta: (meta) => {
+          if (!isActiveStream()) {
+            return;
+          }
           setChatSessionId(meta.chat_session_id);
           setStoredChatSessionId(workspaceId, selectedProductId, meta.chat_session_id);
         },
         onToken: ({ text }) => {
+          if (!isActiveStream()) {
+            return;
+          }
           appendTokenToMessage(assistantMessageId, text);
         },
         onDone: (payload) => {
+          if (!isActiveStream()) {
+            return;
+          }
           setChatSessionId(payload.chat_session_id);
           setStoredChatSessionId(workspaceId, selectedProductId, payload.chat_session_id);
           finalizeAssistantMessage(assistantMessageId, {
@@ -419,6 +460,10 @@ export function CoreAnalystWorkspace(): ReactNode {
           });
         },
       });
+
+      if (!isActiveStream()) {
+        return;
+      }
 
       finalizeAssistantMessage(assistantMessageId, {
         content: done.answer,
@@ -451,7 +496,9 @@ export function CoreAnalystWorkspace(): ReactNode {
       if (activeStreamControllerRef.current === controller) {
         activeStreamControllerRef.current = null;
       }
-      setIsChatResponding(false);
+      if (isActiveStream()) {
+        setIsChatResponding(false);
+      }
     }
   }
 
@@ -507,41 +554,38 @@ export function CoreAnalystWorkspace(): ReactNode {
     ),
   };
 
-  const suggestedQuestionsSection: WorkspaceSection = {
-    id: "suggested-questions",
-    title: "Suggested Questions",
-    description: "Display grounded starter prompts generated from ingested reviews.",
-    status: latestIngestion ? "ready" : "loading",
-    placeholder: latestIngestion ? (
-      <SuggestedQuestions
-        questions={suggestedQuestions}
-        hasConversationStarted={hasConversationStarted}
-        onSelectQuestion={appendQuestionToChat}
-      />
-    ) : (
-      <ul className="space-y-2">
-        <li className="h-8 animate-pulse rounded-md bg-muted" />
-        <li className="h-8 animate-pulse rounded-md bg-muted" />
-        <li className="h-8 animate-pulse rounded-md bg-muted" />
-      </ul>
-    ),
-  };
-
   const analystChatSection: WorkspaceSection = {
     id: "analyst-chat",
     title: "Analyst Chat",
-    description: "Host scoped multi-turn Q&A with source-grounded answers from ingested reviews.",
+    description: "Start with grounded prompts, then continue with scoped multi-turn Q&A.",
     status: canAnalyzeSelectedProduct ? "ready" : "loading",
     placeholder: canAnalyzeSelectedProduct ? (
-      <AnalystChatPanel
-        messages={chatMessages}
-        onSubmitQuestion={appendQuestionToChat}
-        disabled={false}
-        isResponding={isChatResponding}
-        onCancelResponse={cancelActiveResponse}
-      />
+      <div className="space-y-4">
+        <section className="rounded-md border border-border bg-muted/20 p-3" aria-label="Suggested prompts for chat">
+          <h3 className="text-sm font-semibold text-foreground">Suggested Questions</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Use these grounded prompts to start analysis quickly, then branch into follow-up questions.
+          </p>
+          <div className="mt-3">
+            <SuggestedQuestions
+              questions={suggestedQuestions}
+              hasConversationStarted={hasConversationStarted}
+              onSelectQuestion={appendQuestionToChat}
+            />
+          </div>
+        </section>
+
+        <AnalystChatPanel
+          messages={chatMessages}
+          onSubmitQuestion={appendQuestionToChat}
+          disabled={false}
+          isResponding={isChatResponding}
+          onCancelResponse={cancelActiveResponse}
+        />
+      </div>
     ) : (
       <div className="space-y-3">
+        <div className="h-20 animate-pulse rounded-md bg-muted" />
         <div className="h-24 animate-pulse rounded-md bg-muted" />
         <div className="h-24 animate-pulse rounded-md bg-muted" />
         <div className="h-10 animate-pulse rounded-md bg-muted" />
@@ -549,48 +593,60 @@ export function CoreAnalystWorkspace(): ReactNode {
     ),
   };
 
-  return (
-    <div className="grid gap-4 md:grid-cols-2">
-      <WorkspaceSectionCard
-        section={{
-          id: "product-selector",
-          title: "Products",
-          description: "Each source URL is tracked as a separate product. Select one to analyze in isolation.",
-          status: isProductsLoading ? "loading" : "ready",
-          placeholder: isProductsLoading ? (
-            <div className="grid gap-3">
-              <div className="h-24 animate-pulse rounded-md bg-muted" />
-              <div className="h-24 animate-pulse rounded-md bg-muted" />
-            </div>
-          ) : products.length > 0 ? (
-            <div className="grid gap-3">
-              {dashboardNotice ? (
+  const productSection: WorkspaceSection = {
+    id: "product-selector",
+    title: "Products",
+    description: "Select a product to load its isolated summary and chat context.",
+    status: isProductsLoading ? "loading" : "ready",
+    placeholder: isProductsLoading ? (
+      <div className="grid gap-3">
+        <div className="h-24 animate-pulse rounded-md bg-muted" />
+        <div className="h-24 animate-pulse rounded-md bg-muted" />
+      </div>
+    ) : products.length > 0 ? (
+      <div className="space-y-3">
+        {dashboardNotice ? (
+          <div
+            role={dashboardNotice.tone === "error" ? "alert" : "status"}
+            className={
+              dashboardNotice.tone === "error"
+                ? "flex items-center justify-between gap-2 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700"
+                : "flex items-center justify-between gap-2 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-700"
+            }
+          >
+            <span>{dashboardNotice.message}</span>
+            {dashboardNotice.tone === "error" ? (
+              <button
+                type="button"
+                onClick={() => setDashboardNotice(null)}
+                className="rounded border border-current/30 px-1.5 py-0.5 text-[11px] font-medium"
+              >
+                Dismiss
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+        <ul className="space-y-1" aria-label="Products list">
+          {products.map((product) => {
+            const isSelected = product.id === selectedProductId;
+            return (
+              <li key={product.id}>
                 <div
-                  role={dashboardNotice.tone === "error" ? "alert" : "status"}
-                  className={
-                    dashboardNotice.tone === "error"
-                      ? "flex items-center justify-between gap-2 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700"
-                      : "flex items-center justify-between gap-2 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-700"
-                  }
+                  className={[
+                    "rounded-lg border px-3 py-2",
+                    isSelected
+                      ? "border-primary bg-primary/5"
+                      : "border-border bg-background hover:bg-muted/30",
+                  ].join(" ")}
                 >
-                  <span>{dashboardNotice.message}</span>
-                  {dashboardNotice.tone === "error" ? (
-                    <button
-                      type="button"
-                      onClick={() => setDashboardNotice(null)}
-                      className="rounded border border-current/30 px-1.5 py-0.5 text-[11px] font-medium"
-                    >
-                      Dismiss
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-              {products.map((product) => (
-                <ProductCard
-                  key={product.id}
-                  product={product}
-                  onAnalyze={setSelectedProductId}
-                  deleteAction={(
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-foreground">{product.name}</p>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        {product.total_reviews} reviews
+                      </p>
+                    </div>
+
                     <button
                       type="button"
                       aria-label={`Delete product ${product.name}`}
@@ -598,26 +654,44 @@ export function CoreAnalystWorkspace(): ReactNode {
                       onClick={() => {
                         void handleDeleteProduct(product.id);
                       }}
-                      className="rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                      className="rounded-md border border-border bg-background px-2 py-1 text-[11px] font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {pendingDeleteProductId === product.id ? "Deleting..." : "Delete"}
                     </button>
-                  )}
-                  className={
-                    product.id === selectedProductId
-                      ? "border-primary ring-1 ring-primary/30"
-                      : ""
-                  }
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="rounded-md border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
-              No products yet. Run URL ingestion and each unique URL will be stored as its own product.
-            </p>
-          ),
-        }}
-      />
+                  </div>
+
+                  <div className="mt-2 flex items-center justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedProductId(product.id)}
+                      className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-95"
+                    >
+                      Analyze
+                    </button>
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    ) : (
+      <p className="rounded-md border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
+        No products yet. Run URL ingestion and each unique URL will be stored as its own product.
+      </p>
+    ),
+  };
+
+  return (
+    <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+      <aside
+        className="w-full lg:sticky lg:top-4 lg:h-[calc(100vh-2rem)] lg:w-[19.5rem] lg:shrink-0 lg:overflow-y-auto"
+        aria-label="Products sidebar"
+      >
+        <WorkspaceSectionCard section={productSection} />
+      </aside>
+
+      <main className="min-w-0 flex-1 space-y-4">
       <WorkspaceSectionCard
         section={{
           id: "ingestion-panel",
@@ -678,8 +752,8 @@ export function CoreAnalystWorkspace(): ReactNode {
         }}
       />
       <WorkspaceSectionCard key={summarySection.id} section={summarySection} />
-      <WorkspaceSectionCard key={suggestedQuestionsSection.id} section={suggestedQuestionsSection} />
       <WorkspaceSectionCard key={analystChatSection.id} section={analystChatSection} />
+      </main>
     </div>
   );
 }

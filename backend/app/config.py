@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import AliasChoices, Field, field_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -145,6 +145,23 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
+
+    @model_validator(mode="after")
+    def validate_security_defaults(self) -> "Settings":
+        """Enforce safer production defaults for cookie and CORS configuration."""
+
+        if self.workspace_cookie_same_site == "none" and not self.workspace_cookie_secure:
+            raise ValueError("workspace_cookie_secure must be true when workspace_cookie_same_site='none'.")
+
+        if self.environment == "production":
+            if not self.workspace_cookie_secure:
+                raise ValueError("workspace_cookie_secure must be true in production.")
+
+            has_wildcard = any(origin.strip() == "*" for origin in self.cors_allow_origins)
+            if has_wildcard:
+                raise ValueError("cors_allow_origins cannot contain '*' in production.")
+
+        return self
 
 
 @lru_cache

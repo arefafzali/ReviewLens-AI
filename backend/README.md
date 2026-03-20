@@ -200,6 +200,12 @@ Optional local tuning:
 - `REVIEWLENS_WORKSPACE_COOKIE_SAME_SITE` sets cookie SameSite policy (`lax`, `strict`, `none`).
 - `REVIEWLENS_WORKSPACE_COOKIE_PATH` sets cookie path scope.
 
+Production config guardrails (validated at startup):
+
+- `REVIEWLENS_WORKSPACE_COOKIE_SECURE` must be `true` in production.
+- `REVIEWLENS_WORKSPACE_COOKIE_SAME_SITE=none` requires `REVIEWLENS_WORKSPACE_COOKIE_SECURE=true`.
+- `REVIEWLENS_CORS_ALLOW_ORIGINS` cannot include `*` in production.
+
 ## Verify Required Sample URLs
 
 Seed local sample workspace/product IDs if needed:
@@ -224,6 +230,16 @@ The script validates:
 ```bash
 pytest
 ```
+
+Realistic test fixtures live under `tests/fixtures/` and are used to cover
+workflow-level ingestion, deduplication, analytics, retrieval, and chat behavior
+without relying on live network calls.
+
+Optional Postgres retrieval parity test:
+
+- Set `REVIEWLENS_POSTGRES_TEST_URL` to a Postgres database URL.
+- Run `pytest tests/test_retrieval_service_postgres.py`.
+- If the env var is not set, this test is skipped.
 
 ## Database migrations
 

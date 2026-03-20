@@ -182,6 +182,58 @@ describe("AnalystChatPanel", () => {
     expect(screen.queryByText("null")).not.toBeInTheDocument();
   });
 
+  it("renders at most three citations for readability", () => {
+    render(
+      <AnalystChatPanel
+        onSubmitQuestion={vi.fn()}
+        messages={[
+          {
+            id: "m6",
+            role: "assistant",
+            content: "Common themes are consistent across evidence.",
+            state: "complete",
+            finalClassification: "answer",
+            citations: [
+              { evidence_id: "E1", review_id: "r1", snippet: "Snippet 1", rank: 0.9 },
+              { evidence_id: "E2", review_id: "r2", snippet: "Snippet 2", rank: 0.8 },
+              { evidence_id: "E3", review_id: "r3", snippet: "Snippet 3", rank: 0.7 },
+              { evidence_id: "E4", review_id: "r4", snippet: "Snippet 4", rank: 0.6 },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("E1")).toBeInTheDocument();
+    expect(screen.getByText("E2")).toBeInTheDocument();
+    expect(screen.getByText("E3")).toBeInTheDocument();
+    expect(screen.queryByText("E4")).not.toBeInTheDocument();
+  });
+
+  it("skips rendering malformed citation snippets", () => {
+    render(
+      <AnalystChatPanel
+        onSubmitQuestion={vi.fn()}
+        messages={[
+          {
+            id: "m7",
+            role: "assistant",
+            content: "Evidence is partially available.",
+            state: "complete",
+            finalClassification: "insufficient_evidence",
+            citations: [
+              { evidence_id: "E1", review_id: "r1", snippet: "Valid snippet", rank: 0.8 },
+              { evidence_id: "E2", review_id: "r2", snippet: "" as never, rank: 0.7 },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText(/valid snippet/i)).toBeInTheDocument();
+    expect(screen.queryByText('""')).not.toBeInTheDocument();
+  });
+
   it("shows loading state and disables composer while responding", () => {
     const onCancelResponse = vi.fn();
     render(

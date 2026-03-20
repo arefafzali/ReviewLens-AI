@@ -52,11 +52,27 @@ function parseCitations(value: unknown): ChatCitationItem[] {
   }
 
   return value
-    .filter((item): item is ChatCitationItem => Boolean(item && typeof item === "object" && "evidence_id" in item && "snippet" in item))
-    .map((item) => ({
-      ...item,
-      rank: typeof item.rank === "number" ? item.rank : 0,
-    }));
+    .filter((item) => Boolean(item && typeof item === "object"))
+    .map((item) => {
+      const candidate = item as Partial<ChatCitationItem>;
+      const evidenceId = typeof candidate.evidence_id === "string" ? candidate.evidence_id : "";
+      const snippet = typeof candidate.snippet === "string" ? candidate.snippet : "";
+      if (!evidenceId || !snippet) {
+        return null;
+      }
+
+      return {
+        evidence_id: evidenceId,
+        review_id: typeof candidate.review_id === "string" ? candidate.review_id : "",
+        title: typeof candidate.title === "string" ? candidate.title : null,
+        snippet,
+        author_name: typeof candidate.author_name === "string" ? candidate.author_name : null,
+        reviewed_at: typeof candidate.reviewed_at === "string" ? candidate.reviewed_at : null,
+        rating: typeof candidate.rating === "number" ? candidate.rating : null,
+        rank: typeof candidate.rank === "number" ? candidate.rank : 0,
+      };
+    })
+    .filter((item): item is ChatCitationItem => item !== null);
 }
 
 function parseRunStatus(value: unknown): IngestionRunStatus {
@@ -96,6 +112,9 @@ function buildIngestionSnapshotFromProduct(detail: ProductDetailResponse): Inges
     return null;
   }
 
+  const stats = detail.stats ?? {};
+  const normalizedStats = typeof stats === "object" && stats ? stats : {};
+
   return {
     ingestion_run_id: detail.latest_ingestion?.ingestion_run_id ?? `product-${detail.id}`,
     source_type: "scrape",
@@ -106,6 +125,7 @@ function buildIngestionSnapshotFromProduct(detail: ProductDetailResponse): Inges
     warnings: [],
     diagnostics: {},
     summary_snapshot: {
+      ...normalizedStats,
       total_reviews: detail.total_reviews,
       average_rating: detail.average_rating ?? null,
       suggested_questions: parseSuggestedQuestionsFromStats(detail.stats),
@@ -159,15 +179,27 @@ export function ProductAnalysisWorkspace({ productId }: ProductAnalysisWorkspace
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const activeStreamControllerRef = useRef<AbortController | null>(null);
+  const streamEpochRef = useRef(0);
+  const productIdRef = useRef(productId);
 
   const suggestedQuestions = latestIngestion?.summary_snapshot?.suggested_questions ?? [];
   const hasConversationStarted = chatMessages.length > 0;
   const canAnalyzeProduct = Boolean(latestIngestion) || (product?.total_reviews ?? 0) > 0 || chatMessages.length > 0;
 
   useEffect(() => {
+    productIdRef.current = productId;
+  }, [productId]);
+
+  useEffect(() => {
     let canceled = false;
     setActiveProductId(workspaceId, productId);
     setLoadError(null);
+    streamEpochRef.current += 1;
+    activeStreamControllerRef.current?.abort();
+    activeStreamControllerRef.current = null;
+    setIsChatResponding(false);
+    setChatMessages([]);
+    setChatSessionId(null);
 
     const storedSessionId = getStoredChatSessionId(workspaceId, productId) ?? undefined;
 
@@ -283,6 +315,12 @@ export function ProductAnalysisWorkspace({ productId }: ProductAnalysisWorkspace
 
     const controller = new AbortController();
     activeStreamControllerRef.current = controller;
+    const streamEpoch = ++streamEpochRef.current;
+    const streamProductId = productId;
+
+    function isActiveStream(): boolean {
+      return streamEpochRef.current === streamEpoch && streamProductId === productIdRef.current;
+    }
 
     try {
       const done = await streamChatCompletion({
@@ -294,13 +332,22 @@ export function ProductAnalysisWorkspace({ productId }: ProductAnalysisWorkspace
         },
         signal: controller.signal,
         onMeta: (meta) => {
+          if (!isActiveStream()) {
+            return;
+          }
           setChatSessionId(meta.chat_session_id);
           setStoredChatSessionId(workspaceId, productId, meta.chat_session_id);
         },
         onToken: ({ text }) => {
+          if (!isActiveStream()) {
+            return;
+          }
           appendTokenToMessage(assistantMessageId, text);
         },
         onDone: (payload) => {
+          if (!isActiveStream()) {
+            return;
+          }
           setChatSessionId(payload.chat_session_id);
           setStoredChatSessionId(workspaceId, productId, payload.chat_session_id);
           finalizeAssistantMessage(assistantMessageId, {
@@ -310,6 +357,10 @@ export function ProductAnalysisWorkspace({ productId }: ProductAnalysisWorkspace
           });
         },
       });
+
+      if (!isActiveStream()) {
+        return;
+      }
 
       finalizeAssistantMessage(assistantMessageId, {
         content: done.answer,
@@ -342,7 +393,9 @@ export function ProductAnalysisWorkspace({ productId }: ProductAnalysisWorkspace
       if (activeStreamControllerRef.current === controller) {
         activeStreamControllerRef.current = null;
       }
-      setIsChatResponding(false);
+      if (isActiveStream()) {
+        setIsChatResponding(false);
+      }
     }
   }
 
@@ -372,41 +425,38 @@ export function ProductAnalysisWorkspace({ productId }: ProductAnalysisWorkspace
     ),
   };
 
-  const suggestedQuestionsSection: WorkspaceSection = {
-    id: "suggested-questions",
-    title: "Suggested Questions",
-    description: "Display grounded starter prompts generated from ingested reviews.",
-    status: latestIngestion ? "ready" : "loading",
-    placeholder: latestIngestion ? (
-      <SuggestedQuestions
-        questions={suggestedQuestions}
-        hasConversationStarted={hasConversationStarted}
-        onSelectQuestion={appendQuestionToChat}
-      />
-    ) : (
-      <ul className="space-y-2">
-        <li className="h-8 animate-pulse rounded-md bg-muted" />
-        <li className="h-8 animate-pulse rounded-md bg-muted" />
-        <li className="h-8 animate-pulse rounded-md bg-muted" />
-      </ul>
-    ),
-  };
-
   const analystChatSection: WorkspaceSection = {
     id: "analyst-chat",
     title: "Analyst Chat",
-    description: "Host scoped multi-turn Q&A with source-grounded answers from ingested reviews.",
+    description: "Start with grounded prompts, then continue with scoped multi-turn Q&A.",
     status: canAnalyzeProduct ? "ready" : "loading",
     placeholder: canAnalyzeProduct ? (
-      <AnalystChatPanel
-        messages={chatMessages}
-        onSubmitQuestion={appendQuestionToChat}
-        disabled={false}
-        isResponding={isChatResponding}
-        onCancelResponse={cancelActiveResponse}
-      />
+      <div className="space-y-4">
+        <section className="rounded-md border border-border bg-muted/20 p-3" aria-label="Suggested prompts for chat">
+          <h3 className="text-sm font-semibold text-foreground">Suggested Questions</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Use these grounded prompts to start analysis quickly, then branch into follow-up questions.
+          </p>
+          <div className="mt-3">
+            <SuggestedQuestions
+              questions={suggestedQuestions}
+              hasConversationStarted={hasConversationStarted}
+              onSelectQuestion={appendQuestionToChat}
+            />
+          </div>
+        </section>
+
+        <AnalystChatPanel
+          messages={chatMessages}
+          onSubmitQuestion={appendQuestionToChat}
+          disabled={false}
+          isResponding={isChatResponding}
+          onCancelResponse={cancelActiveResponse}
+        />
+      </div>
     ) : (
       <div className="space-y-3">
+        <div className="h-20 animate-pulse rounded-md bg-muted" />
         <div className="h-24 animate-pulse rounded-md bg-muted" />
         <div className="h-24 animate-pulse rounded-md bg-muted" />
         <div className="h-10 animate-pulse rounded-md bg-muted" />
@@ -415,9 +465,8 @@ export function ProductAnalysisWorkspace({ productId }: ProductAnalysisWorkspace
   };
 
   return (
-    <div className="grid gap-4 md:grid-cols-2">
+    <div className="space-y-4">
       <WorkspaceSectionCard key={summarySection.id} section={summarySection} />
-      <WorkspaceSectionCard key={suggestedQuestionsSection.id} section={suggestedQuestionsSection} />
       <WorkspaceSectionCard key={analystChatSection.id} section={analystChatSection} />
     </div>
   );

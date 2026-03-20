@@ -433,7 +433,7 @@ export function IngestionPanel({ onIngestionSuccess, onProductSelected }: Ingest
               ? "rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs font-medium text-red-700"
               : "rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700"
           }
-          role="status"
+          role={notice.tone === "error" ? "alert" : "status"}
         >
           {notice.message}
         </p>
